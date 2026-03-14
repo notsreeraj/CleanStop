@@ -1,0 +1,224 @@
+"""
+FastAPI application — DRT Stop Issue Reporting System.
+
+Endpoints:
+  GET  /stops                  – all stops with report counts
+  GET  /stops/{stop_id}/reports – reports for a single stop
+  POST /reports                – submit a new report (multipart)
+  GET  /stops/nearby           – stops within radius of a coordinate
+"""
+import os
+import math
+import uuid
+import shutil
+from contextlib import asynccontextmanager
+from datetime import datetime, timezone
+from typing import Optional
+
+from fastapi import FastAPI, Depends, File, Form, UploadFile, Query, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+from sqlalchemy import func
+from sqlalchemy.orm import Session
+
+from database import engine, get_db, Base
+from models import Stop, Report
+from schemas import StopWithCount, ReportOut, ReportCreated, NearbyStop
+from seed import seed_stops
+
+# ── Constants ───────────────────────────────────────────────────────────────
+
+UPLOAD_DIR = os.path.join(os.path.dirname(__file__), "uploads")
+EARTH_RADIUS_M = 6_371_000  # metres
+
+# Ensure uploads directory exists before mounting StaticFiles
+os.makedirs(UPLOAD_DIR, exist_ok=True)
+
+
+# ── Lifespan – create tables & seed ─────────────────────────────────────────
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Startup
+    Base.metadata.create_all(bind=engine)
+    db = next(get_db())
+    try:
+        seed_stops(db)
+    finally:
+        db.close()
+    yield
+    # Shutdown (nothing to do)
+
+
+# ── App ─────────────────────────────────────────────────────────────────────
+
+app = FastAPI(
+    title="DRT Stop Issue Reporting API",
+    version="1.0.0",
+    lifespan=lifespan,
+)
+
+# CORS — allow everything for dev convenience
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# Serve uploaded photos as static files at /uploads/<filename>
+app.mount("/uploads", StaticFiles(directory=UPLOAD_DIR), name="uploads")
+
+# Also serve the admin dashboard at /admin
+ADMIN_DIR = os.path.join(os.path.dirname(__file__), "..", "admin")
+if os.path.isdir(ADMIN_DIR):
+    app.mount("/admin", StaticFiles(directory=ADMIN_DIR, html=True), name="admin")
+
+
+# ── Helpers ─────────────────────────────────────────────────────────────────
+
+def haversine(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
+    """Return the great-circle distance in metres between two points."""
+    lat1, lon1, lat2, lon2 = map(math.radians, [lat1, lon1, lat2, lon2])
+    dlat = lat2 - lat1
+    dlon = lon2 - lon1
+    a = math.sin(dlat / 2) ** 2 + math.cos(lat1) * math.cos(lat2) * math.sin(dlon / 2) ** 2
+    return EARTH_RADIUS_M * 2 * math.asin(math.sqrt(a))
+
+
+# ── Endpoints ───────────────────────────────────────────────────────────────
+
+@app.get("/stops", response_model=list[StopWithCount])
+def get_all_stops(db: Session = Depends(get_db)):
+    """
+    Return every stop with its report count.
+    Used by the admin dashboard on initial load.
+    """
+    rows = (
+        db.query(
+            Stop.stop_id,
+            Stop.stop_name,
+            Stop.lat,
+            Stop.lon,
+            func.count(Report.id).label("report_count"),
+        )
+        .outerjoin(Report, Report.stop_id == Stop.stop_id)
+        .group_by(Stop.stop_id)
+        .all()
+    )
+    return [
+        StopWithCount(
+            stop_id=r.stop_id,
+            stop_name=r.stop_name,
+            lat=r.lat,
+            lon=r.lon,
+            report_count=r.report_count,
+        )
+        for r in rows
+    ]
+
+
+@app.get("/stops/nearby", response_model=list[NearbyStop])
+def get_nearby_stops(
+    lat: float = Query(..., description="Latitude of the user"),
+    lon: float = Query(..., description="Longitude of the user"),
+    radius: float = Query(500, description="Search radius in metres"),
+    db: Session = Depends(get_db),
+):
+    """
+    Return stops within `radius` metres of (lat, lon), sorted by distance.
+    Used by the Flutter app on open.
+    """
+    all_stops = db.query(Stop).all()
+    nearby = []
+    for s in all_stops:
+        d = haversine(lat, lon, s.lat, s.lon)
+        if d <= radius:
+            nearby.append(
+                NearbyStop(
+                    stop_id=s.stop_id,
+                    stop_name=s.stop_name,
+                    lat=s.lat,
+                    lon=s.lon,
+                    distance_m=round(d, 1),
+                )
+            )
+    nearby.sort(key=lambda x: x.distance_m)
+    return nearby
+
+
+@app.get("/stops/{stop_id}/reports", response_model=list[ReportOut])
+def get_stop_reports(stop_id: int, db: Session = Depends(get_db)):
+    """
+    Return all reports for a specific stop.
+    Used when an admin clicks a stop on the map.
+    """
+    stop = db.query(Stop).filter(Stop.stop_id == stop_id).first()
+    if not stop:
+        raise HTTPException(status_code=404, detail="Stop not found")
+    reports = (
+        db.query(Report)
+        .filter(Report.stop_id == stop_id)
+        .order_by(Report.created_at.desc())
+        .all()
+    )
+    return reports
+
+
+@app.post("/reports", response_model=ReportCreated)
+async def create_report(
+    stop_id: int = Form(...),
+    issue_type: str = Form(...),
+    description: Optional[str] = Form(None),
+    device_lat: float = Form(...),
+    device_lon: float = Form(...),
+    photo: Optional[UploadFile] = File(None),
+    db: Session = Depends(get_db),
+):
+    """
+    Submit a new issue report (multipart/form-data).
+    Used by the Flutter mobile app.
+    """
+    # Validate stop exists
+    stop = db.query(Stop).filter(Stop.stop_id == stop_id).first()
+    if not stop:
+        raise HTTPException(status_code=404, detail="Stop not found")
+
+    # Validate issue type
+    valid_types = {"graffiti", "damage", "debris", "lighting", "other"}
+    if issue_type not in valid_types:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid issue_type. Must be one of: {', '.join(sorted(valid_types))}",
+        )
+
+    # Handle photo upload
+    photo_url = None
+    if photo and photo.filename:
+        ext = os.path.splitext(photo.filename)[1] or ".jpg"
+        filename = f"{uuid.uuid4().hex}{ext}"
+        filepath = os.path.join(UPLOAD_DIR, filename)
+        with open(filepath, "wb") as buffer:
+            shutil.copyfileobj(photo.file, buffer)
+        photo_url = f"/uploads/{filename}"
+
+    # Create report
+    report = Report(
+        stop_id=stop_id,
+        issue_type=issue_type,
+        description=description,
+        photo_url=photo_url,
+        device_lat=device_lat,
+        device_lon=device_lon,
+        created_at=datetime.now(timezone.utc),
+    )
+    db.add(report)
+    db.commit()
+    db.refresh(report)
+
+    return ReportCreated(
+        report_id=report.id,
+        stop_id=report.stop_id,
+        created_at=report.created_at,
+    )
