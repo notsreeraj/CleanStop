@@ -1,10 +1,15 @@
+import 'package:clerk_flutter/clerk_flutter.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'screens/login/login_screen.dart';
 import 'screens/report_issue/report_issue_screen.dart';
+import 'services/auth_service.dart';
 import 'utils/app_colors.dart';
 
-void main() {
+void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  await dotenv.load(fileName: '.env');
   SystemChrome.setSystemUIOverlayStyle(
     const SystemUiOverlayStyle(
       statusBarColor: Colors.transparent,
@@ -19,14 +24,33 @@ class MyApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      debugShowCheckedModeBanner: false,
-      title: 'CleanStop',
-      theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(seedColor: AppColors.primary),
-        useMaterial3: true,
+    return ClerkAuth(
+      config: ClerkAuthConfig(
+        publishableKey: AuthService.publishableKey,
       ),
-      home: const ReportIssueScreen(),
+      child: ClerkErrorListener(
+        child: MaterialApp(
+          debugShowCheckedModeBanner: false,
+          title: 'CleanStop',
+          theme: ThemeData(
+            colorScheme: ColorScheme.fromSeed(seedColor: AppColors.primary),
+            useMaterial3: true,
+          ),
+          home: const _AuthGate(),
+        ),
+      ),
+    );
+  }
+}
+
+class _AuthGate extends StatelessWidget {
+  const _AuthGate();
+
+  @override
+  Widget build(BuildContext context) {
+    return ClerkAuthBuilder(
+      signedInBuilder: (context, auth) => const ReportIssueScreen(),
+      signedOutBuilder: (context, auth) => const LoginScreen(),
     );
   }
 }
