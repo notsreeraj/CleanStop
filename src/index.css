@@ -309,6 +309,25 @@ ul { list-style: none; }
 .report-card .card-image {
   width: 100%; height: 180px; object-fit: cover;
 }
+.card-image-placeholder {
+  width: 100%; height: 180px; display: flex; align-items: center; justify-content: center;
+  background: var(--bg-input); font-size: 48px;
+}
+.badge-status-pill {
+  font-size: 11px; font-weight: 700; padding: 3px 10px; border-radius: 12px;
+}
+.card-status-control {
+  display: flex; align-items: center; gap: 8px; padding-top: 8px; border-top: 1px solid var(--border);
+}
+.card-status-control label {
+  font-size: 11px; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px;
+}
+.card-status-control select {
+  background: var(--bg-input); border: 1px solid var(--border); color: var(--text-primary);
+  font-family: inherit; font-size: 12px; padding: 5px 10px; border-radius: var(--radius-sm);
+  cursor: pointer; flex: 1;
+}
+.card-status-control select:focus { border-color: #10b981; outline: none; }
 .report-card .card-body { padding: 16px; display: flex; flex-direction: column; gap: 10px; }
 .report-card .card-body .card-title { font-size: 14px; font-weight: 700; }
 .report-card .card-body .card-desc {

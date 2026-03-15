@@ -40,8 +40,11 @@ DESCRIPTIONS = {
     ],
 }
 
-NUM_REPORTS = 20
-NUM_STOPS = 10  # pick this many random stops to distribute reports across
+NUM_REPORTS = 150
+NUM_STOPS = 40  # pick this many random stops to distribute reports across
+
+STATUSES = ["open", "in_progress", "resolved", "closed"]
+STATUS_WEIGHTS = [40, 20, 20, 20]  # weighted distribution
 
 
 def seed_reports():
@@ -70,6 +73,7 @@ def seed_reports():
             issue_type=issue_type,
             description=description,
             photo_url=None,
+            status=random.choices(STATUSES, weights=STATUS_WEIGHTS, k=1)[0],
             created_at=now - timedelta(days=days_ago, hours=random.randint(0, 23), minutes=random.randint(0, 59)),
         )
         db.add(report)

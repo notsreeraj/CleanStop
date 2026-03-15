@@ -38,6 +38,7 @@ class Report(Base):
     issue_type = Column(Text, nullable=False)  # graffiti, damage, debris, lighting, other
     description = Column(Text, nullable=True)
     photo_url = Column(Text, nullable=True)
+    status = Column(Text, nullable=False, default="open")  # open, in_progress, resolved, closed
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
     stop = relationship("Stop", back_populates="reports")
