@@ -28,6 +28,15 @@ class MyApp extends StatelessWidget {
     return ClerkAuth(
       config: ClerkAuthConfig(
         publishableKey: AuthService.publishableKey,
+        loading: const Directionality(
+          textDirection: TextDirection.ltr,
+          child: ColoredBox(
+            color: Colors.white,
+            child: Center(
+              child: CircularProgressIndicator(),
+            ),
+          ),
+        ),
       ),
       child: MaterialApp(
         debugShowCheckedModeBanner: false,
