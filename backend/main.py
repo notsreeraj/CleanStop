@@ -15,6 +15,18 @@ from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from typing import Optional
 
+import cloudinary
+import cloudinary.uploader
+from dotenv import load_dotenv
+
+load_dotenv()
+
+cloudinary.config(
+    cloud_name=os.getenv("CLOUDINARY_CLOUD_NAME"),
+    api_key=os.getenv("CLOUDINARY_API_KEY"),
+    api_secret=os.getenv("CLOUDINARY_API_SECRET"),
+)
+
 from fastapi import FastAPI, Depends, File, Form, UploadFile, Query, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
@@ -22,8 +34,8 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from database import engine, get_db, Base
-from models import Stop, Report
-from schemas import StopWithCount, ReportOut, ReportCreated, NearbyStop
+from models import Stop, Report, User
+from schemas import StopWithCount, ReportOut, ReportCreated, NearbyStop, UserCreate, UserOut
 from seed import seed_stops
 
 # ── Constants ───────────────────────────────────────────────────────────────
@@ -166,6 +178,32 @@ def get_stop_reports(stop_id: int, db: Session = Depends(get_db)):
     return reports
 
 
+@app.post("/users", response_model=UserOut)
+def upsert_user(payload: UserCreate, db: Session = Depends(get_db)):
+    """
+    Create or update a user record. Called by the Flutter app after Clerk sign-in.
+    """
+    user = db.query(User).filter(User.user_id == payload.user_id).first()
+    if user:
+        user.name = payload.name
+        user.email = payload.email
+    else:
+        user = User(user_id=payload.user_id, name=payload.name, email=payload.email)
+        db.add(user)
+    db.commit()
+    db.refresh(user)
+    return user
+
+
+@app.get("/users/{user_id}", response_model=UserOut)
+def get_user(user_id: str, db: Session = Depends(get_db)):
+    """Fetch a single user by their Clerk user ID."""
+    user = db.query(User).filter(User.user_id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    return user
+
+
 @app.post("/reports", response_model=ReportCreated)
 async def create_report(
     stop_id: int = Form(...),
@@ -173,6 +211,7 @@ async def create_report(
     description: Optional[str] = Form(None),
     device_lat: float = Form(...),
     device_lon: float = Form(...),
+    user_id: Optional[str] = Form(None),
     photo: Optional[UploadFile] = File(None),
     db: Session = Depends(get_db),
 ):
@@ -193,19 +232,24 @@ async def create_report(
             detail=f"Invalid issue_type. Must be one of: {', '.join(sorted(valid_types))}",
         )
 
+    # Validate user exists if provided
+    if user_id and not db.query(User).filter(User.user_id == user_id).first():
+        raise HTTPException(status_code=404, detail="User not found")
+
     # Handle photo upload
     photo_url = None
     if photo and photo.filename:
-        ext = os.path.splitext(photo.filename)[1] or ".jpg"
-        filename = f"{uuid.uuid4().hex}{ext}"
-        filepath = os.path.join(UPLOAD_DIR, filename)
-        with open(filepath, "wb") as buffer:
-            shutil.copyfileobj(photo.file, buffer)
-        photo_url = f"/uploads/{filename}"
+        result = cloudinary.uploader.upload(
+            photo.file,
+            folder="cleanstop_reports",
+            resource_type="image",
+        )
+        photo_url = result["secure_url"]
 
     # Create report
     report = Report(
         stop_id=stop_id,
+        user_id=user_id,
         issue_type=issue_type,
         description=description,
         photo_url=photo_url,
