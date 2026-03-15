@@ -6,6 +6,7 @@ import '../../../utils/app_colors.dart';
 class NearestStopCard extends StatelessWidget {
   final BusStop stop;
   final String distanceFormatted;
+  final bool isWithinRange;
   final double? userLat;
   final double? userLon;
 
@@ -13,26 +14,31 @@ class NearestStopCard extends StatelessWidget {
     super.key,
     required this.stop,
     required this.distanceFormatted,
+    required this.isWithinRange,
     this.userLat,
     this.userLon,
   });
 
   @override
   Widget build(BuildContext context) {
+    final statusColor = isWithinRange ? AppColors.success : AppColors.error;
+
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
-        gradient: const LinearGradient(
-          colors: [Color(0xFFE8F5E9), Color(0xFFE0F7FA)],
+        gradient: LinearGradient(
+          colors: isWithinRange
+              ? [const Color(0xFFE8F5E9), const Color(0xFFE0F7FA)]
+              : [const Color(0xFFFCE4EC), const Color(0xFFFFF3E0)],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: AppColors.success.withAlpha(60)),
+        border: Border.all(color: statusColor.withAlpha(60)),
         boxShadow: [
           BoxShadow(
-            color: AppColors.success.withAlpha(25),
+            color: statusColor.withAlpha(25),
             blurRadius: 16,
             offset: const Offset(0, 6),
           ),
@@ -47,12 +53,12 @@ class NearestStopCard extends StatelessWidget {
               Container(
                 padding: const EdgeInsets.all(10),
                 decoration: BoxDecoration(
-                  color: AppColors.success.withAlpha(30),
+                  color: statusColor.withAlpha(30),
                   borderRadius: BorderRadius.circular(12),
                 ),
-                child: const Icon(
-                  Icons.location_on_rounded,
-                  color: AppColors.success,
+                child: Icon(
+                  isWithinRange ? Icons.location_on_rounded : Icons.location_off_rounded,
+                  color: statusColor,
                   size: 22,
                 ),
               ),
@@ -62,11 +68,11 @@ class NearestStopCard extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      'Nearest Stop Found',
+                      'Nearest Bus Stop',
                       style: GoogleFonts.poppins(
                         fontSize: 11,
                         fontWeight: FontWeight.w500,
-                        color: AppColors.success,
+                        color: statusColor,
                       ),
                     ),
                     const SizedBox(height: 2),
@@ -76,6 +82,34 @@ class NearestStopCard extends StatelessWidget {
                         fontSize: 15,
                         fontWeight: FontWeight.w700,
                         color: const Color(0xFF1A1A2E),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              // Range badge
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                decoration: BoxDecoration(
+                  color: statusColor.withAlpha(25),
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(color: statusColor.withAlpha(60)),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      isWithinRange ? Icons.check_circle_rounded : Icons.cancel_rounded,
+                      size: 13,
+                      color: statusColor,
+                    ),
+                    const SizedBox(width: 4),
+                    Text(
+                      isWithinRange ? 'In Range' : 'Too Far',
+                      style: GoogleFonts.poppins(
+                        fontSize: 10,
+                        fontWeight: FontWeight.w600,
+                        color: statusColor,
                       ),
                     ),
                   ],

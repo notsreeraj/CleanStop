@@ -28,16 +28,28 @@ class MyApp extends StatelessWidget {
       config: ClerkAuthConfig(
         publishableKey: AuthService.publishableKey,
       ),
-      child: ClerkErrorListener(
-        child: MaterialApp(
-          debugShowCheckedModeBanner: false,
-          title: 'CleanStop',
-          theme: ThemeData(
-            colorScheme: ColorScheme.fromSeed(seedColor: AppColors.primary),
-            useMaterial3: true,
-          ),
-          home: const _AuthGate(),
+      child: MaterialApp(
+        debugShowCheckedModeBanner: false,
+        title: 'CleanStop',
+        theme: ThemeData(
+          colorScheme: ColorScheme.fromSeed(seedColor: AppColors.primary),
+          useMaterial3: true,
+          extensions: [
+            ClerkThemeExtension(
+              colors: const ClerkThemeColors(
+                background: Colors.white,
+                altBackground: Color(0xFFE8F5E9),
+                borderSide: Color(0xFFCCCCCC),
+                text: Color(0xFF1A2E1A),
+                icon: Color(0xFF5F6062),
+                lightweightText: Color(0xFF999999),
+                error: Color(0xFFE53935),
+                accent: Color(0xFF00703C),
+              ),
+            ),
+          ],
         ),
+        home: const _AuthGate(),
       ),
     );
   }
