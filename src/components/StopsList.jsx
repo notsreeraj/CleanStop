@@ -2,22 +2,29 @@ import { useState, useMemo, useRef, useEffect } from 'react'
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000'
 
-export default function StopsList({ stops, loading, selectedStop, onStopSelect }) {
+export default function StopsList({ stops, loading, selectedStop, onStopSelect, showAll, setShowAll }) {
   const [search, setSearch] = useState('')
+  const [sortBy, setSortBy] = useState('reports-desc')
   const [reports, setReports] = useState(null)
   const [reportsLoading, setReportsLoading] = useState(false)
   const [reportsStop, setReportsStop] = useState(null)
   const selectedRef = useRef(null)
 
-  // Filter stops by search query
+  // Filter and sort stops
   const filtered = useMemo(() => {
-    if (!search.trim()) return stops
-    const q = search.toLowerCase()
-    return stops.filter(s =>
-      s.stop_name.toLowerCase().includes(q) ||
-      String(s.stop_id).includes(q)
-    )
-  }, [stops, search])
+    let list = showAll ? stops : stops.filter(s => s.report_count > 0)
+    if (search.trim()) {
+      const q = search.toLowerCase()
+      list = list.filter(s =>
+        s.stop_name.toLowerCase().includes(q) ||
+        String(s.stop_id).includes(q)
+      )
+    }
+    if (sortBy === 'reports-desc') list = [...list].sort((a, b) => b.report_count - a.report_count)
+    else if (sortBy === 'reports-asc') list = [...list].sort((a, b) => a.report_count - b.report_count)
+    else if (sortBy === 'name') list = [...list].sort((a, b) => a.stop_name.localeCompare(b.stop_name))
+    return list
+  }, [stops, search, sortBy, showAll])
 
   // Scroll selected stop into view
   useEffect(() => {
@@ -52,7 +59,7 @@ export default function StopsList({ stops, loading, selectedStop, onStopSelect }
     <div className="stops-panel">
       {/* Header with search */}
       <div className="stops-panel-header">
-        <h3>🚏 Bus Stops</h3>
+        <h3>🚏 Stops with Reports</h3>
         <span className="stops-count">{filtered.length} stops</span>
       </div>
 
@@ -67,6 +74,21 @@ export default function StopsList({ stops, loading, selectedStop, onStopSelect }
         {search && (
           <button className="stops-search-clear" onClick={() => setSearch('')}>✕</button>
         )}
+      </div>
+
+      <div className="stops-sort-bar">
+        <label>Sort:</label>
+        <select value={sortBy} onChange={e => setSortBy(e.target.value)}>
+          <option value="reports-desc">Most Reports</option>
+          <option value="reports-asc">Fewest Reports</option>
+          <option value="name">Name A–Z</option>
+        </select>
+        <button
+          className={`stops-toggle-all ${showAll ? 'active' : ''}`}
+          onClick={() => setShowAll(prev => !prev)}
+        >
+          {showAll ? '🚏 All Stops' : '⚠️ With Reports'}
+        </button>
       </div>
 
       {/* Stops list */}
@@ -94,7 +116,7 @@ export default function StopsList({ stops, loading, selectedStop, onStopSelect }
             <div className="stop-item-indicator">
               <span
                 className="stop-dot"
-                style={{ background: stop.report_count > 0 ? '#f59e0b' : '#10b981' }}
+                style={{ background: stop.report_count <= 1 ? '#10b981' : stop.report_count <= 4 ? '#f59e0b' : '#ef4444' }}
               ></span>
             </div>
             <div className="stop-item-info">

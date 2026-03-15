@@ -44,6 +44,8 @@ export default function ReportsView() {
   const [statusFilter, setStatusFilter] = useState('all')
   const [categoryFilter, setCategoryFilter] = useState('all')
   const [sortBy, setSortBy] = useState('newest')
+  const [page, setPage] = useState(1)
+  const PAGE_SIZE = 15
 
   useEffect(() => {
     fetch(`${API_BASE}/reports`)
@@ -71,6 +73,9 @@ export default function ReportsView() {
       .catch(() => {})
   }
 
+  // Reset to page 1 when filters change
+  useEffect(() => { setPage(1) }, [statusFilter, categoryFilter, sortBy])
+
   const filtered = reports
     .filter(r => {
       if (statusFilter !== 'all' && r.status !== statusFilter) return false
@@ -83,6 +88,9 @@ export default function ReportsView() {
       if (sortBy === 'stop') return a.stop_name.localeCompare(b.stop_name)
       return 0
     })
+
+  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE))
+  const paged = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE)
 
   if (loading) {
     return (
@@ -133,13 +141,13 @@ export default function ReportsView() {
           </select>
         </div>
         <div style={{ marginLeft: 'auto', fontSize: 13, color: 'var(--text-muted)' }}>
-          Showing <strong style={{ color: 'var(--text-primary)' }}>{filtered.length}</strong> of {reports.length} reports
+          Showing <strong style={{ color: 'var(--text-primary)' }}>{(page - 1) * PAGE_SIZE + 1}–{Math.min(page * PAGE_SIZE, filtered.length)}</strong> of {filtered.length} reports
         </div>
       </div>
 
       {/* Report Cards Grid */}
       <div className="reports-grid">
-        {filtered.map(r => (
+        {paged.map(r => (
           <div key={r.id} className="report-card">
             {r.photo_url ? (
               <img className="card-image" src={r.photo_url} alt={r.issue_type} loading="lazy" />
@@ -190,6 +198,27 @@ export default function ReportsView() {
           </div>
         ))}
       </div>
+
+      {/* Pagination */}
+      {totalPages > 1 && (
+        <div className="reports-pagination">
+          <button
+            className="pagination-btn"
+            disabled={page <= 1}
+            onClick={() => setPage(p => p - 1)}
+          >
+            ← Previous
+          </button>
+          <span className="pagination-info">Page {page} of {totalPages}</span>
+          <button
+            className="pagination-btn"
+            disabled={page >= totalPages}
+            onClick={() => setPage(p => p + 1)}
+          >
+            Next →
+          </button>
+        </div>
+      )}
     </div>
   )
 }
