@@ -1,8 +1,23 @@
-import React from 'react'
-import { monthlyTrends, categoryDistribution, partsForecast, fleetMetrics, categoryColors } from '../data/mockData'
+import React, { useState } from 'react'
+import { monthlyTrends, categoryDistribution, partsForecast, fleetMetrics, categoryColors, mockWeatherData } from '../data/mockData'
+
+// Helper for weather icons
+const getWeatherIcon = (condition) => {
+  switch (condition.toLowerCase()) {
+    case 'snow': return '❄️';
+    case 'ice': return '🧊';
+    case 'rain': return '🌧️';
+    case 'clear': return '☀️';
+    case 'cloudy': return '☁️';
+    default: return '🌤️';
+  }
+}
 
 export default function PredictiveView() {
+  const [weatherTab, setWeatherTab] = useState('future') // 'past' or 'future'
   const maxReports = Math.max(...monthlyTrends.map(m => m.reports))
+
+  const activeWeatherData = mockWeatherData[weatherTab]
 
   return (
     <div className="predictive-view">
@@ -30,6 +45,43 @@ export default function PredictiveView() {
       </div>
 
       <div className="predictive-grid">
+        {/* Weather Predictions */}
+        <div className="chart-card" style={{ gridColumn: '1 / -1' }}>
+          <div className="card-header-flex">
+            <h3>🌦️ Weather & Hazard Predictions</h3>
+            <div className="weather-toggle">
+              <button 
+                className={`weather-btn ${weatherTab === 'past' ? 'active' : ''}`}
+                onClick={() => setWeatherTab('past')}
+              >
+                Past 5 Days
+              </button>
+              <button 
+                className={`weather-btn ${weatherTab === 'future' ? 'active' : ''}`}
+                onClick={() => setWeatherTab('future')}
+              >
+                Next 5 Days
+              </button>
+            </div>
+          </div>
+          <div className="weather-cards-container">
+            {activeWeatherData.map((day, i) => (
+              <div key={i} className="weather-day-card">
+                <div className="wd-date">{day.date}</div>
+                <div className="wd-icon">{getWeatherIcon(day.condition)}</div>
+                <div className="wd-temp">{day.temp}</div>
+                <div className="wd-details">
+                  <span>{day.condition}</span>
+                  <span className="wd-precip">{day.precip}</span>
+                </div>
+                <div className={`wd-risk risk-${day.risk.toLowerCase()}`}>
+                  {day.risk} Risk
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+
         {/* Monthly Trend */}
         <div className="chart-card">
           <h3>📈 Monthly Report Trend</h3>

@@ -254,6 +254,23 @@ export const partsForecast = [
   { part: 'Roof Sealant Kits', current: 8, needed30: 3, needed60: 6, needed90: 10, urgency: 'medium' },
 ]
 
+export const mockWeatherData = {
+  past: [
+    { date: 'Mon, Mar 09', temp: '-6°', condition: 'Snow',   precip: '8cm', risk: 'High' },
+    { date: 'Tue, Mar 10', temp: '-2°', condition: 'Cloudy', precip: '0cm', risk: 'Low' },
+    { date: 'Wed, Mar 11', temp: '0°',  condition: 'Clear',  precip: '0cm', risk: 'Low' },
+    { date: 'Thu, Mar 12', temp: '-4°', condition: 'Snow',   precip: '3cm', risk: 'Medium' },
+    { date: 'Fri, Mar 13', temp: '-8°', condition: 'Ice',    precip: '1mm', risk: 'Critical' },
+  ],
+  future: [
+    { date: 'Sun, Mar 15', temp: '2°',  condition: 'Clear',  precip: '0cm', risk: 'Low' },
+    { date: 'Mon, Mar 16', temp: '4°',  condition: 'Rain',   precip: '5mm', risk: 'Medium' },
+    { date: 'Tue, Mar 17', temp: '-1°', condition: 'Snow',   precip: '4cm', risk: 'High' },
+    { date: 'Wed, Mar 18', temp: '-3°', condition: 'Cloudy', precip: '0cm', risk: 'Medium' },
+    { date: 'Thu, Mar 19', temp: '1°',  condition: 'Clear',  precip: '0cm', risk: 'Low' },
+  ]
+};
+
 export const fleetMetrics = {
   totalBuses: 180,
   operational: 168,

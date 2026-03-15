@@ -4,6 +4,7 @@ import Header from './components/Header'
 import CanadaMap from './components/CanadaMap'
 import StopsList from './components/StopsList'
 import FlaggedStops from './components/FlaggedStops'
+import PredictiveView from './components/PredictiveView'
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000'
 
@@ -60,6 +61,7 @@ export default function App() {
             </div>
           )}
           {activeView === 'flagged' && <FlaggedStops />}
+          {activeView === 'insights' && <PredictiveView />}
         </main>
       </div>
     </div>
