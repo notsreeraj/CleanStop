@@ -4,17 +4,21 @@ FastAPI application — DRT Stop Issue Reporting System.
 Endpoints:
   GET  /stops                  – all stops with report counts
   GET  /stops/{stop_id}/reports – reports for a single stop
-  POST /reports                – submit a new report (multipart)
+  POST /reports                – submit a new report (multipart or JSON)
+  POST /reports/validate-image – validate image via Gemini AI
   GET  /stops/nearby           – stops within radius of a coordinate
 """
 import os
 import math
 import uuid
+import json
+import base64
 import shutil
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from typing import Optional
 
+import httpx
 import cloudinary
 import cloudinary.uploader
 from dotenv import load_dotenv
@@ -27,11 +31,14 @@ cloudinary.config(
     api_secret=os.getenv("CLOUDINARY_API_SECRET"),
 )
 
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
+
 from fastapi import FastAPI, Depends, File, Form, UploadFile, Query, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy import func
 from sqlalchemy.orm import Session
+from pydantic import BaseModel
 
 from database import engine, get_db, Base
 from models import Stop, Report, User
@@ -291,6 +298,197 @@ def get_user(user_id: str, db: Session = Depends(get_db)):
     return user
 
 
+class ReportCreateJSON(BaseModel):
+    """JSON body for creating a report (used by mobile app after Cloudinary upload + Gemini validation)."""
+    stop_id: int
+    issue_type: str
+    description: Optional[str] = None
+    user_id: Optional[str] = None
+    photo_url: Optional[str] = None
+
+
+class ImageValidationRequest(BaseModel):
+    """Body for POST /reports/validate-image."""
+    image_url: str
+    category: str
+    description: Optional[str] = None
+
+
+class ImageValidationResponse(BaseModel):
+    """Response for POST /reports/validate-image."""
+    is_valid: bool
+    reason: str
+    confidence: float
+
+
+VALID_CATEGORIES = {"Snow / Ice", "Debris", "Structural Damage", "Obstruction"}
+
+
+def _build_gemini_prompt(category: str, description: Optional[str]) -> str:
+    """Build a prompt for Gemini to validate a bus stop issue image."""
+    desc_block = ""
+    if description and description.strip():
+        desc_block = f"""
+The citizen provided this description: "{description}"
+Verify the image is relevant to this description.
+"""
+    return f"""You are a DRT (Durham Region Transit) bus stop issue validation system.
+
+Your job is to check whether the submitted image shows a REAL bus stop issue 
+in ONE of these categories: Snow / Ice, Debris, Structural Damage, Obstruction.
+
+The user selected category: "{category}"
+{desc_block}
+
+VALIDATION RULES:
+1. The image MUST show a bus stop area, transit shelter, sidewalk near transit, 
+   or public road/infrastructure near a transit stop.
+2. The image MUST show an issue matching the selected category:
+   - "Snow / Ice": Snow accumulation, ice on sidewalk/shelter/platform, frozen surfaces
+   - "Debris": Litter, trash, broken glass, fallen branches, leaves blocking area
+   - "Structural Damage": Broken shelter glass, damaged bench, cracked platform, 
+     broken sign, vandalism/graffiti on shelter, missing panels
+   - "Obstruction": Blocked path, fallen tree, parked vehicle blocking stop, 
+     construction blocking access, any barrier preventing access
+3. REJECT if: selfie, food, pet, meme, screenshot, indoor photo, random unrelated 
+   object, AI-generated fake, stock photo, too blurry to identify anything.
+4. REJECT if the image clearly does NOT match the selected category.
+
+RESPOND WITH ONLY A SINGLE VALID JSON OBJECT. No markdown, no code fences.
+
+{{
+  "is_valid": true/false,
+  "reason": "Brief explanation of what you see and why it's valid or invalid",
+  "confidence": 0.0-1.0
+}}
+"""
+
+
+async def _validate_image_with_gemini(image_url: str, category: str, description: Optional[str]) -> dict:
+    """Call Gemini API to validate a bus stop issue image."""
+    if not GEMINI_API_KEY:
+        raise HTTPException(status_code=500, detail="GEMINI_API_KEY not configured")
+
+    prompt = _build_gemini_prompt(category, description)
+
+    # Fetch image and convert to base64
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        img_resp = await client.get(image_url)
+        if img_resp.status_code != 200:
+            raise HTTPException(status_code=400, detail="Failed to fetch image from URL")
+        image_b64 = base64.b64encode(img_resp.content).decode("utf-8")
+        content_type = img_resp.headers.get("content-type", "image/jpeg")
+
+    gemini_model = "gemini-2.0-flash"
+    gemini_url = f"https://generativelanguage.googleapis.com/v1beta/models/{gemini_model}:generateContent?key={GEMINI_API_KEY}"
+
+    payload = {
+        "contents": [{
+            "parts": [
+                {"text": prompt},
+                {"inline_data": {"mime_type": content_type, "data": image_b64}},
+            ]
+        }],
+        "generationConfig": {
+            "temperature": 0.1,
+            "maxOutputTokens": 1024,
+            "responseMimeType": "application/json",
+        },
+    }
+
+    async with httpx.AsyncClient(timeout=60.0) as client:
+        for attempt in range(3):
+            resp = await client.post(gemini_url, json=payload)
+            if resp.status_code == 200:
+                break
+            if resp.status_code in (503, 429) and attempt < 2:
+                import asyncio
+                await asyncio.sleep(2 * (attempt + 1))
+                continue
+            raise HTTPException(status_code=502, detail=f"Gemini API error: {resp.status_code}")
+
+    result = resp.json()
+    parts = result.get("candidates", [{}])[0].get("content", {}).get("parts", [])
+    raw_text = ""
+    for part in parts:
+        if part.get("text") and not part.get("thought"):
+            raw_text = part["text"]
+            break
+    if not raw_text:
+        for part in reversed(parts):
+            if part.get("text"):
+                raw_text = part["text"]
+                break
+
+    if not raw_text:
+        raise HTTPException(status_code=502, detail="Gemini returned empty response")
+
+    clean = raw_text.strip().removeprefix("```json").removeprefix("```").removesuffix("```").strip()
+    try:
+        parsed = json.loads(clean)
+    except json.JSONDecodeError:
+        raise HTTPException(status_code=502, detail=f"Failed to parse Gemini response: {clean[:200]}")
+
+    return {
+        "is_valid": bool(parsed.get("is_valid", False)),
+        "reason": str(parsed.get("reason", "Unknown")),
+        "confidence": max(0.0, min(1.0, float(parsed.get("confidence", 0.0)))),
+    }
+
+
+@app.post("/reports/validate-image", response_model=ImageValidationResponse)
+async def validate_report_image(payload: ImageValidationRequest):
+    """
+    Validate a bus stop issue image using Gemini AI.
+    Called by the Flutter app before submitting a report.
+    """
+    if payload.category not in VALID_CATEGORIES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid category. Must be one of: {', '.join(sorted(VALID_CATEGORIES))}",
+        )
+    result = await _validate_image_with_gemini(payload.image_url, payload.category, payload.description)
+    return ImageValidationResponse(**result)
+
+
+@app.post("/reports/submit", response_model=ReportCreated)
+async def create_report_json(payload: ReportCreateJSON, db: Session = Depends(get_db)):
+    """
+    Submit a new report via JSON body (used by mobile app).
+    Image is already uploaded to Cloudinary, URL passed directly.
+    """
+    stop = db.query(Stop).filter(Stop.stop_id == payload.stop_id).first()
+    if not stop:
+        raise HTTPException(status_code=404, detail="Stop not found")
+
+    if payload.issue_type not in VALID_CATEGORIES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid issue_type. Must be one of: {', '.join(sorted(VALID_CATEGORIES))}",
+        )
+
+    if payload.user_id and not db.query(User).filter(User.user_id == payload.user_id).first():
+        raise HTTPException(status_code=404, detail="User not found")
+
+    report = Report(
+        stop_id=payload.stop_id,
+        user_id=payload.user_id,
+        issue_type=payload.issue_type,
+        description=payload.description,
+        photo_url=payload.photo_url,
+        created_at=datetime.now(timezone.utc),
+    )
+    db.add(report)
+    db.commit()
+    db.refresh(report)
+
+    return ReportCreated(
+        report_id=report.id,
+        stop_id=report.stop_id,
+        created_at=report.created_at,
+    )
+
+
 @app.post("/reports", response_model=ReportCreated)
 async def create_report(
     stop_id: int = Form(...),
@@ -302,7 +500,7 @@ async def create_report(
 ):
     """
     Submit a new issue report (multipart/form-data).
-    Used by the Flutter mobile app.
+    Used by the admin dashboard or legacy clients.
     """
     # Validate stop exists
     stop = db.query(Stop).filter(Stop.stop_id == stop_id).first()

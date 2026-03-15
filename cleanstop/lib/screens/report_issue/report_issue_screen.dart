@@ -38,6 +38,24 @@ class _ReportIssueScreenState extends State<ReportIssueScreen>
     );
   }
 
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // Pass user info from Clerk to ViewModel
+    final authState = ClerkAuth.of(context);
+    final user = authState.client.user;
+    if (user != null) {
+      final name = [
+        user.firstName ?? '',
+        user.lastName ?? '',
+      ].where((s) => s.isNotEmpty).join(' ');
+      final email = user.emailAddresses.isNotEmpty
+          ? user.emailAddresses.first.emailAddress
+          : '';
+      _vm.setUser(userId: user.id, name: name, email: email);
+    }
+  }
+
   void _onVmChanged() => setState(() {});
 
   @override
@@ -79,8 +97,10 @@ class _ReportIssueScreenState extends State<ReportIssueScreen>
         'Report submitted for ${_vm.nearestStop!.stopName}',
         success: true,
       );
+    } else if (!ok && _vm.submissionError != null) {
+      _showSnack(_vm.submissionError!, success: false);
     } else if (!ok) {
-      _showSnack('Submission failed.', success: false);
+      _showSnack('Submission failed. Please try again.', success: false);
     }
   }
 
@@ -445,11 +465,27 @@ class _ReportIssueScreenState extends State<ReportIssueScreen>
               ),
             ),
             child: _vm.isSubmitting
-                ? const SizedBox(
-                    height: 22,
-                    width: 22,
-                    child: CircularProgressIndicator(
-                        color: Colors.white, strokeWidth: 2.5),
+                ? Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      const SizedBox(
+                        height: 22,
+                        width: 22,
+                        child: CircularProgressIndicator(
+                            color: Colors.white, strokeWidth: 2.5),
+                      ),
+                      if (_vm.submissionStatus != null) ...[
+                        const SizedBox(width: 12),
+                        Text(
+                          _vm.submissionStatus!,
+                          style: GoogleFonts.poppins(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w500,
+                            color: Colors.white,
+                          ),
+                        ),
+                      ],
+                    ],
                   )
                 : Row(
                     mainAxisAlignment: MainAxisAlignment.center,
