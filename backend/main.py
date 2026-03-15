@@ -35,7 +35,7 @@ from sqlalchemy.orm import Session
 
 from database import engine, get_db, Base
 from models import Stop, Report, User
-from schemas import StopWithCount, ReportOut, ReportCreated, NearbyStop, UserCreate, UserOut
+from schemas import StopWithCount, ReportOut, ReportWithLocation, ReportStatusUpdate, ReportCreated, NearbyStop, UserCreate, UserOut
 from seed import seed_stops
 
 # ── Constants ───────────────────────────────────────────────────────────────
@@ -131,6 +131,35 @@ def get_all_stops(db: Session = Depends(get_db)):
     ]
 
 
+@app.get("/reports", response_model=list[ReportWithLocation])
+def get_all_reports(db: Session = Depends(get_db)):
+    """
+    Return every report with its stop's name and coordinates.
+    Used by the admin dashboard map view.
+    """
+    rows = (
+        db.query(Report, Stop.stop_name, Stop.lat, Stop.lon)
+        .join(Stop, Stop.stop_id == Report.stop_id)
+        .order_by(Report.created_at.desc())
+        .all()
+    )
+    return [
+        ReportWithLocation(
+            id=r.Report.id,
+            stop_id=r.Report.stop_id,
+            stop_name=r.stop_name,
+            lat=r.lat,
+            lon=r.lon,
+            issue_type=r.Report.issue_type,
+            description=r.Report.description,
+            photo_url=r.Report.photo_url,
+            status=r.Report.status,
+            created_at=r.Report.created_at,
+        )
+        for r in rows
+    ]
+
+
 @app.get("/stops/flagged", response_model=list[StopWithCount])
 def get_flagged_stops(db: Session = Depends(get_db)):
     """
@@ -207,6 +236,27 @@ def get_stop_reports(stop_id: int, db: Session = Depends(get_db)):
         .all()
     )
     return reports
+
+
+@app.patch("/reports/{report_id}/status", response_model=ReportOut)
+def update_report_status(report_id: int, payload: ReportStatusUpdate, db: Session = Depends(get_db)):
+    """
+    Update the status of a report.
+    Valid statuses: open, in_progress, resolved, closed.
+    """
+    valid_statuses = {"open", "in_progress", "resolved", "closed"}
+    if payload.status not in valid_statuses:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid status. Must be one of: {', '.join(sorted(valid_statuses))}",
+        )
+    report = db.query(Report).filter(Report.id == report_id).first()
+    if not report:
+        raise HTTPException(status_code=404, detail="Report not found")
+    report.status = payload.status
+    db.commit()
+    db.refresh(report)
+    return report
 
 
 @app.post("/users", response_model=UserOut)

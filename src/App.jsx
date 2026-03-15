@@ -4,25 +4,34 @@ import Header from './components/Header'
 import CanadaMap from './components/CanadaMap'
 import StopsList from './components/StopsList'
 import FlaggedStops from './components/FlaggedStops'
+import ReportsView from './components/ReportsView'
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000'
 
 export default function App() {
   const [activeView, setActiveView] = useState('dashboard')
   const [stops, setStops] = useState([])
+  const [reports, setReports] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
   const [selectedStop, setSelectedStop] = useState(null)
+  const [selectedReport, setSelectedReport] = useState(null)
 
-  // Fetch stops once, share between map and list
+  // Fetch stops and reports on mount
   useEffect(() => {
-    fetch(`${API_BASE}/stops`)
-      .then(res => {
+    Promise.all([
+      fetch(`${API_BASE}/stops`).then(res => {
         if (!res.ok) throw new Error(`Server returned ${res.status}`)
         return res.json()
-      })
-      .then(data => {
-        setStops(data)
+      }),
+      fetch(`${API_BASE}/reports`).then(res => {
+        if (!res.ok) throw new Error(`Server returned ${res.status}`)
+        return res.json()
+      }),
+    ])
+      .then(([stopsData, reportsData]) => {
+        setStops(stopsData)
+        setReports(reportsData)
         setLoading(false)
       })
       .catch(err => {
@@ -36,6 +45,10 @@ export default function App() {
     setSelectedStop(stop)
   }, [])
 
+  const handleReportSelect = useCallback((report) => {
+    setSelectedReport(report)
+  }, [])
+
   return (
     <div className="app-layout">
       <Sidebar activeView={activeView} onViewChange={setActiveView} />
@@ -45,11 +58,11 @@ export default function App() {
           {activeView === 'dashboard' && (
             <div className="dashboard-layout">
               <CanadaMap
-                stops={stops}
+                reports={reports}
                 loading={loading}
                 error={error}
-                selectedStop={selectedStop}
-                onStopSelect={handleStopSelect}
+                selectedReport={selectedReport}
+                onReportSelect={handleReportSelect}
               />
               <StopsList
                 stops={stops}
@@ -60,6 +73,7 @@ export default function App() {
             </div>
           )}
           {activeView === 'flagged' && <FlaggedStops />}
+          {activeView === 'reports' && <ReportsView />}
         </main>
       </div>
     </div>

@@ -3,8 +3,8 @@ import React from 'react'
 const navItems = [
   { section: 'Operations' },
   { icon: '📊', label: 'Dashboard', view: 'dashboard' },
-  { icon: '�', label: 'Flagged Stops', view: 'flagged' },
-  { icon: '�📋', label: 'Reports', view: 'reports', badgeKey: 'pending' },
+  { icon: '🚩', label: 'Flagged Stops', view: 'flagged' },
+  { icon: '📋', label: 'Reports', view: 'reports', badgeKey: 'pending' },
   { icon: '🗺️', label: 'Map View', view: 'dashboard', badge: 'Live', badgeClass: 'green' },
   { section: 'Intelligence' },
   { icon: '🔮', label: 'Predictive Insights', view: 'insights' },
