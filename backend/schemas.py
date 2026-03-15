@@ -3,7 +3,7 @@ Pydantic schemas for API request validation and response serialization.
 """
 from datetime import datetime
 from typing import Optional
-from pydantic import BaseModel
+from pydantic import BaseModel, EmailStr
 
 
 # ── Response schemas ────────────────────────────────────────────────────────
@@ -20,9 +20,27 @@ class StopWithCount(BaseModel):
         from_attributes = True
 
 
+class UserCreate(BaseModel):
+    """Body for POST /users — upsert a user from Clerk."""
+    user_id: str
+    name: str
+    email: str
+
+
+class UserOut(BaseModel):
+    """GET /users/{user_id} response."""
+    user_id: str
+    name: str
+    email: str
+
+    class Config:
+        from_attributes = True
+
+
 class ReportOut(BaseModel):
     """GET /stops/{stop_id}/reports response item."""
     id: int
+    user_id: Optional[str] = None
     issue_type: str
     description: Optional[str] = None
     photo_url: Optional[str] = None

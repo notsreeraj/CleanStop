@@ -1,90 +1,65 @@
-import React, { useState, useCallback } from 'react'
+import { useState, useCallback, useEffect, useRef } from 'react'
 import Sidebar from './components/Sidebar'
 import Header from './components/Header'
-import StatsCards from './components/StatsCards'
 import CanadaMap from './components/CanadaMap'
-import ReportsFeed from './components/ReportsFeed'
-import ReportsView from './components/ReportsView'
-import ReportDetailModal from './components/ReportDetailModal'
-import PredictiveView from './components/PredictiveView'
-import { mockReports, getReportCounts } from './data/mockData'
+import StopsList from './components/StopsList'
+
+const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000'
 
 export default function App() {
   const [activeView, setActiveView] = useState('dashboard')
-  const [reports, setReports] = useState(mockReports)
-  const [selectedReport, setSelectedReport] = useState(null)
-  const [toast, setToast] = useState(null)
+  const [stops, setStops] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState(null)
+  const [selectedStop, setSelectedStop] = useState(null)
 
-  const counts = getReportCounts(reports)
-
-  const showToast = useCallback((message) => {
-    setToast(message)
-    setTimeout(() => setToast(null), 4000)
+  // Fetch stops once, share between map and list
+  useEffect(() => {
+    fetch(`${API_BASE}/stops`)
+      .then(res => {
+        if (!res.ok) throw new Error(`Server returned ${res.status}`)
+        return res.json()
+      })
+      .then(data => {
+        setStops(data)
+        setLoading(false)
+      })
+      .catch(err => {
+        setError(err.message)
+        setLoading(false)
+      })
   }, [])
 
-  const handleApprove = useCallback((id) => {
-    setReports(prev => prev.map(r =>
-      r.id === id ? { ...r, status: 'approved' } : r
-    ))
-    setSelectedReport(null)
-    showToast(`✅ Report ${id} approved — Maintenance request generated and dispatched to service team.`)
-  }, [showToast])
-
-  const handleDismiss = useCallback((id) => {
-    setReports(prev => prev.map(r =>
-      r.id === id ? { ...r, status: 'dismissed' } : r
-    ))
-    setSelectedReport(null)
-    showToast(`Report ${id} has been dismissed.`)
-  }, [showToast])
+  // When a stop is selected from the list, fly to it on the map
+  const handleStopSelect = useCallback((stop) => {
+    setSelectedStop(stop)
+  }, [])
 
   return (
     <div className="app-layout">
-      <Sidebar
-        activeView={activeView}
-        onViewChange={setActiveView}
-        pendingCount={counts.pending}
-      />
+      <Sidebar activeView={activeView} onViewChange={setActiveView} />
       <div className="main-area">
-        <Header activeView={activeView} pendingCount={counts.pending} />
+        <Header activeView={activeView} />
         <main className="main-content">
-          {/* Dashboard View */}
           {activeView === 'dashboard' && (
-            <>
-              <StatsCards counts={counts} />
-              <div className="map-section">
-                <CanadaMap reports={reports} onReportClick={setSelectedReport} />
-                <ReportsFeed
-                  reports={reports}
-                  onReportClick={setSelectedReport}
-                  onViewAll={() => setActiveView('reports')}
-                />
-              </div>
-            </>
-          )}
-
-          {/* Reports View */}
-          {activeView === 'reports' && (
-            <ReportsView reports={reports} onReportClick={setSelectedReport} />
-          )}
-
-          {/* Predictive Insights View */}
-          {activeView === 'insights' && (
-            <PredictiveView />
+            <div className="dashboard-layout">
+              <CanadaMap
+                stops={stops}
+                loading={loading}
+                error={error}
+                selectedStop={selectedStop}
+                onStopSelect={handleStopSelect}
+              />
+              <StopsList
+                stops={stops}
+                loading={loading}
+                selectedStop={selectedStop}
+                onStopSelect={handleStopSelect}
+              />
+            </div>
           )}
         </main>
       </div>
-
-      {/* Report Detail Modal */}
-      <ReportDetailModal
-        report={selectedReport}
-        onClose={() => setSelectedReport(null)}
-        onApprove={handleApprove}
-        onDismiss={handleDismiss}
-      />
-
-      {/* Toast Notification */}
-      {toast && <div className="toast">🔧 {toast}</div>}
     </div>
   )
 }
