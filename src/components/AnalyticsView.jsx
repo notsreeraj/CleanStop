@@ -420,6 +420,61 @@ export default function AnalyticsView() {
           </div>
         </div>
 
+        {/* Reports by Category — Bar Chart */}
+        <div className="analytics-card analytics-card-donut">
+          <h3>Reports by Category</h3>
+          <div className="bar-chart-vertical">
+            {Object.entries(stats.byCategory)
+              .sort((a, b) => b[1] - a[1])
+              .map(([cat, count]) => {
+                const maxCat = Math.max(...Object.values(stats.byCategory), 1)
+                return (
+                  <div key={cat} className="bar-v-row">
+                    <span className="bar-v-label">{cat}</span>
+                    <div className="bar-v-track">
+                      <div
+                        className="bar-v-fill"
+                        style={{
+                          width: `${(count / maxCat) * 100}%`,
+                          background: issueColors[cat] || '#94a3b8',
+                        }}
+                      />
+                    </div>
+                    <span className="bar-v-value">{count}</span>
+                  </div>
+                )
+              })}
+          </div>
+        </div>
+
+        {/* Reports by Status — Bar Chart */}
+        <div className="analytics-card analytics-card-donut">
+          <h3>Reports by Status</h3>
+          <div className="bar-chart-vertical">
+            {Object.entries(stats.byStatus)
+              .filter(([, count]) => count > 0)
+              .sort((a, b) => b[1] - a[1])
+              .map(([status, count]) => {
+                const maxStat = Math.max(...Object.values(stats.byStatus), 1)
+                return (
+                  <div key={status} className="bar-v-row">
+                    <span className="bar-v-label">{statusLabels[status]}</span>
+                    <div className="bar-v-track">
+                      <div
+                        className="bar-v-fill"
+                        style={{
+                          width: `${(count / maxStat) * 100}%`,
+                          background: statusColors[status],
+                        }}
+                      />
+                    </div>
+                    <span className="bar-v-value">{count}</span>
+                  </div>
+                )
+              })}
+          </div>
+        </div>
+
         {/* Reports Over Time */}
         <div className="analytics-card analytics-card-wide">
           <h3>Reports Over Time</h3>
@@ -488,6 +543,7 @@ export default function AnalyticsView() {
             <div className="timeline-chart">
               {stats.sortedDays.map(([day, count]) => (
                 <div key={day} className="timeline-bar-col">
+                  <span className="timeline-count">{count}</span>
                   <div className="timeline-bar-wrapper">
                     <div
                       className="timeline-bar"

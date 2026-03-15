@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'screens/login/login_screen.dart';
 import 'screens/report_issue/report_issue_screen.dart';
+import 'services/api_service.dart';
 import 'services/auth_service.dart';
 import 'utils/app_colors.dart';
 
@@ -61,9 +62,55 @@ class _AuthGate extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return ClerkAuthBuilder(
-      signedInBuilder: (context, auth) => const ReportIssueScreen(),
+      signedInBuilder: (context, auth) => _SignedInWrapper(auth: auth),
       signedOutBuilder: (context, auth) => const LoginScreen(),
     );
+  }
+}
+
+class _SignedInWrapper extends StatefulWidget {
+  final ClerkAuthState auth;
+  const _SignedInWrapper({required this.auth});
+
+  @override
+  State<_SignedInWrapper> createState() => _SignedInWrapperState();
+}
+
+class _SignedInWrapperState extends State<_SignedInWrapper> {
+  bool _userSynced = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _syncUser();
+  }
+
+  Future<void> _syncUser() async {
+    final user = widget.auth.client.user;
+    if (user != null && !_userSynced) {
+      final userId = user.id;
+      final name = [
+        user.firstName ?? '',
+        user.lastName ?? '',
+      ].where((s) => s.isNotEmpty).join(' ');
+      final email = (user.emailAddresses?.isNotEmpty ?? false)
+          ? user.emailAddresses!.first.emailAddress
+          : '';
+
+      if (userId.isNotEmpty && email.isNotEmpty) {
+        await ApiService.upsertUser(
+          userId: userId,
+          name: name.isNotEmpty ? name : 'User',
+          email: email,
+        );
+      }
+      _userSynced = true;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return const ReportIssueScreen();
   }
 }
 

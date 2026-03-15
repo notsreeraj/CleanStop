@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import '../models/bus_stop.dart';
+import '../services/api_service.dart';
 import '../services/image_picker_service.dart';
 import '../services/location_service.dart';
 import '../services/stop_service.dart';
@@ -18,6 +19,8 @@ class ReportIssueViewModel extends ChangeNotifier {
   File? _selectedImage;
   String _selectedCategory = 'Snow / Ice';
   bool _isSubmitting = false;
+  String? _submissionError;
+  String? _submissionStatus; // progress status text
 
   // Location & nearest stop state
   bool _isFetchingLocation = false;
@@ -27,11 +30,20 @@ class ReportIssueViewModel extends ChangeNotifier {
   double? _userLat;
   double? _userLon;
 
+  // User info (set after login)
+  String? _userId;
+  // ignore: unused_field
+  String? _userName;
+  // ignore: unused_field
+  String? _userEmail;
+
   StreamSubscription? _positionSub;
 
   File? get selectedImage => _selectedImage;
   String get selectedCategory => _selectedCategory;
   bool get isSubmitting => _isSubmitting;
+  String? get submissionError => _submissionError;
+  String? get submissionStatus => _submissionStatus;
   bool get isFetchingLocation => _isFetchingLocation;
   String? get locationError => _locationError;
   BusStop? get nearestStop => _nearestStop;
@@ -49,6 +61,12 @@ class ReportIssueViewModel extends ChangeNotifier {
       return '${(_nearestStopDistance! / 1000).toStringAsFixed(2)} km';
     }
     return '${_nearestStopDistance!.toStringAsFixed(0)} m';
+  }
+
+  void setUser({required String userId, required String name, required String email}) {
+    _userId = userId;
+    _userName = name;
+    _userEmail = email;
   }
 
   void selectCategory(String category) {
@@ -126,19 +144,83 @@ class ReportIssueViewModel extends ChangeNotifier {
     _positionSub = null;
   }
 
+  /// Full submission flow:
+  /// 1. Upload image to Cloudinary
+  /// 2. Validate image with Gemini via backend
+  /// 3. If valid, submit report to backend
   Future<bool> submit() async {
     if (!canSubmit) return false;
 
     _isSubmitting = true;
+    _submissionError = null;
+    _submissionStatus = null;
     notifyListeners();
 
-    // Simulate API call — replace with real service later
-    await Future.delayed(const Duration(seconds: 2));
+    try {
+      String? photoUrl;
 
-    _isSubmitting = false;
-    notifyListeners();
+      // Step 1: Upload image to Cloudinary if present
+      if (_selectedImage != null) {
+        _submissionStatus = 'Uploading image...';
+        notifyListeners();
 
-    return true;
+        photoUrl = await ApiService.uploadImageToCloudinary(_selectedImage!);
+
+        // Step 2: Validate image with Gemini AI
+        _submissionStatus = 'AI analyzing image...';
+        notifyListeners();
+
+        final validation = await ApiService.validateImage(
+          imageUrl: photoUrl,
+          category: _selectedCategory,
+          description: descController.text.trim().isNotEmpty
+              ? descController.text.trim()
+              : null,
+        );
+
+        final isValid = validation['is_valid'] as bool? ?? false;
+        if (!isValid) {
+          final reason = validation['reason'] as String? ?? 'Image not valid for this category.';
+          _submissionError = reason;
+          _isSubmitting = false;
+          _submissionStatus = null;
+          notifyListeners();
+          return false;
+        }
+      }
+
+      // Step 3: Submit report to backend
+      _submissionStatus = 'Submitting report...';
+      notifyListeners();
+
+      await ApiService.submitReport(
+        stopId: _nearestStop!.stopId,
+        issueType: _selectedCategory,
+        description: descController.text.trim().isNotEmpty
+            ? descController.text.trim()
+            : null,
+        userId: _userId,
+        photoUrl: photoUrl,
+      );
+
+      _isSubmitting = false;
+      _submissionStatus = null;
+      _submissionError = null;
+
+      // Reset form after successful submission
+      _selectedImage = null;
+      descController.clear();
+      _selectedCategory = 'Snow / Ice';
+      notifyListeners();
+
+      return true;
+    } catch (e) {
+      _submissionError = e.toString().replaceFirst('Exception: ', '');
+      _isSubmitting = false;
+      _submissionStatus = null;
+      notifyListeners();
+      return false;
+    }
   }
 
   void resetForm() {
@@ -150,6 +232,8 @@ class ReportIssueViewModel extends ChangeNotifier {
     _userLat = null;
     _userLon = null;
     _locationError = null;
+    _submissionError = null;
+    _submissionStatus = null;
     notifyListeners();
   }
 

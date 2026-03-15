@@ -14,7 +14,7 @@ __pycache__/
 *.pyc
 *.pyo
 venv/
-*.db
+.db
 
 # Flutter
 cleanstop/build/
