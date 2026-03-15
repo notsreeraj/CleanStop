@@ -1,0 +1,104 @@
+================================================================================
+  HACKATHON PROJECT — TASK TRACKER
+  Last updated: 2026-03-14
+================================================================================
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  DONE ✅
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+[BACKEND]
+  ✅ Cloudinary integration — backend receives photo from Flutter, uploads to
+     Cloudinary, stores secure_url in photo_url column.
+     Files: backend/main.py, backend/requirements.txt, .env
+
+  ✅ User model created — users table with user_id (Clerk ID, PK), name, email.
+     Files: backend/models.py
+
+  ✅ User schema created — UserCreate and UserOut Pydantic schemas.
+     Files: backend/schemas.py
+
+  ✅ User endpoints added:
+       POST /users  — upsert user after Clerk sign-in
+       GET  /users/{user_id} — fetch user by ID
+     Files: backend/main.py
+
+  ✅ Report model updated — added user_id as nullable FK to users.user_id.
+     Files: backend/models.py
+
+  ✅ POST /reports updated — accepts optional user_id form field, validates
+     user exists if provided.
+     Files: backend/main.py
+
+  ✅ ReportOut schema updated — includes user_id in response.
+     Files: backend/schemas.py
+
+[ADMIN PANEL]
+  ✅ Dashboard stripped to map only — removed StatsCards, ReportsFeed,
+     mock data. App.jsx is now clean.
+     Files: src/App.jsx
+
+  ✅ CanadaMap rebuilt — fetches real stops from GET /stops, renders a marker
+     per stop using stop.lat and stop.lon. Green = no reports, Amber = has
+     reports. Shows stop name + report count in popup.
+     Files: src/components/CanadaMap.jsx
+
+  ✅ VITE_API_BASE_URL added to .env
+     Files: .env
+
+  ✅ Sidebar and Header cleaned up — removed pendingCount prop dependency.
+     Files: src/components/Sidebar.jsx, src/components/Header.jsx
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  BUGS TO FIX 🐛
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  🐛 MAP — Stop markers are misaligned with the map tiles.
+     The map center/zoom and the max bounds are hardcoded values that don't
+     match where the stops actually are. Need to auto-fit the map bounds to
+     the real stop coordinates returned from the API instead of using fixed
+     values (DURHAM_CENTER, DURHAM_ZOOM, setMaxBounds).
+     File: src/components/CanadaMap.jsx
+
+  🐛 BACKEND — cloudinary and python-dotenv packages not yet installed.
+     After requirements.txt was updated, pip install -r requirements.txt
+     needs to be run in the backend environment.
+     File: backend/requirements.txt
+
+  🐛 BACKEND — DB schema out of sync. The users table and user_id column on
+     reports don't exist yet in the live stops.db file because SQLite won't
+     auto-add columns to existing tables. The DB file needs to be deleted and
+     recreated, or a migration script needs to be run.
+     File: backend/stops.db
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  TO DO / NOT STARTED YET 📋
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+[FLUTTER — MOBILE APP]
+  📋 Wire up the real POST /reports API call in the ViewModel.
+     Currently submit() just waits 2 seconds and returns success.
+     File: cleanstop/lib/viewmodels/report_issue_viewmodel.dart
+
+  📋 Pass user_id in the report submission multipart form.
+     After Clerk sign-in the Clerk user ID needs to be read and sent.
+
+  📋 Call POST /users after Clerk sign-in to upsert the user in our DB.
+
+[ADMIN PANEL]
+  📋 Reports view — replace mock data with real reports fetched from
+     GET /stops/{stop_id}/reports (or a new GET /reports endpoint).
+
+  📋 Stop detail — clicking a stop marker should open a side panel or modal
+     showing the reports for that stop.
+
+  📋 Sidebar navigation — currently only Dashboard is wired up. Reports and
+     Insights views are placeholder/mock. Decide what to build there.
+
+  📋 General cleanup — remove unused component files that are no longer
+     referenced (StatsCards, ReportsFeed, ReportsView, ReportDetailModal,
+     PredictiveView, data/mockData.js) once we are sure they won't be reused.
+
+================================================================================

@@ -12,7 +12,7 @@ const viewBreadcrumbs = {
   insights: 'DRT Ops / Intelligence',
 }
 
-export default function Header({ activeView, pendingCount }) {
+export default function Header({ activeView }) {
   return (
     <header className="header">
       <div className="header-left">
@@ -28,10 +28,7 @@ export default function Header({ activeView, pendingCount }) {
       </div>
 
       <div className="header-right">
-        <button className="header-btn" title="Pending Reports">
-          📋
-          {pendingCount > 0 && <span className="notif-dot"></span>}
-        </button>
+        <button className="header-btn" title="Pending Reports">📋</button>
         <button className="header-btn" title="Notifications">🔔</button>
         <button className="header-btn" title="Help">❓</button>
       </div>

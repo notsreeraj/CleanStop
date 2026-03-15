@@ -13,7 +13,7 @@ const navItems = [
   { icon: '👥', label: 'Team', view: 'dashboard' },
 ]
 
-export default function Sidebar({ activeView, onViewChange, pendingCount }) {
+export default function Sidebar({ activeView, onViewChange }) {
   return (
     <aside className="sidebar">
       <div className="sidebar-brand">
@@ -35,9 +35,7 @@ export default function Sidebar({ activeView, onViewChange, pendingCount }) {
           >
             <span className="link-icon">{item.icon}</span>
             <span>{item.label}</span>
-            {item.badgeKey === 'pending' && pendingCount > 0 && (
-              <span className="badge">{pendingCount}</span>
-            )}
+
             {item.badge && (
               <span className={`badge ${item.badgeClass || ''}`}>{item.badge}</span>
             )}
