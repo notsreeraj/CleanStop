@@ -49,8 +49,8 @@ class _ReportIssueScreenState extends State<ReportIssueScreen>
         user.firstName ?? '',
         user.lastName ?? '',
       ].where((s) => s.isNotEmpty).join(' ');
-      final email = user.emailAddresses.isNotEmpty
-          ? user.emailAddresses.first.emailAddress
+      final email = (user.emailAddresses?.isNotEmpty ?? false)
+          ? user.emailAddresses!.first.emailAddress
           : '';
       _vm.setUser(userId: user.id, name: name, email: email);
     }

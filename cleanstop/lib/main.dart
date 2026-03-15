@@ -69,7 +69,7 @@ class _AuthGate extends StatelessWidget {
 }
 
 class _SignedInWrapper extends StatefulWidget {
-  final ClerkAuthProvider auth;
+  final ClerkAuthState auth;
   const _SignedInWrapper({required this.auth});
 
   @override
@@ -93,8 +93,8 @@ class _SignedInWrapperState extends State<_SignedInWrapper> {
         user.firstName ?? '',
         user.lastName ?? '',
       ].where((s) => s.isNotEmpty).join(' ');
-      final email = user.emailAddresses.isNotEmpty
-          ? user.emailAddresses.first.emailAddress
+      final email = (user.emailAddresses?.isNotEmpty ?? false)
+          ? user.emailAddresses!.first.emailAddress
           : '';
 
       if (userId.isNotEmpty && email.isNotEmpty) {

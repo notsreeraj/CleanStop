@@ -32,7 +32,9 @@ class ReportIssueViewModel extends ChangeNotifier {
 
   // User info (set after login)
   String? _userId;
+  // ignore: unused_field
   String? _userName;
+  // ignore: unused_field
   String? _userEmail;
 
   StreamSubscription? _positionSub;
