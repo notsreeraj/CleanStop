@@ -1,3 +1,4 @@
+import 'package:clerk_flutter/clerk_flutter.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:image_picker/image_picker.dart';
@@ -27,6 +28,7 @@ class _ReportIssueScreenState extends State<ReportIssueScreen>
   void initState() {
     super.initState();
     _vm = ReportIssueViewModel()..addListener(_onVmChanged);
+    _vm.startLocationTracking();
     _animController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 200),
@@ -61,21 +63,20 @@ class _ReportIssueScreenState extends State<ReportIssueScreen>
   }
 
   Future<void> _submit() async {
-    if (!_vm.canSubmit) {
+    if (!_vm.isWithinRange) {
+      _showSnack('You must be within 40m of a bus stop to report.', success: false);
+      return;
+    }
+    if (_vm.selectedImage == null && _vm.descController.text.trim().isEmpty) {
       _showSnack('Please add an image or description.', success: false);
       return;
     }
     final ok = await _vm.submit();
     if (!mounted) return;
 
-    if (_vm.locationError != null) {
-      _showSnack('Location error: ${_vm.locationError}', success: false);
-      return;
-    }
-
     if (ok && _vm.nearestStop != null) {
       _showSnack(
-        'Nearest stop: ${_vm.nearestStop!.stopName} (${_vm.nearestStopDistanceFormatted})',
+        'Report submitted for ${_vm.nearestStop!.stopName}',
         success: true,
       );
     } else if (!ok) {
@@ -120,12 +121,40 @@ class _ReportIssueScreenState extends State<ReportIssueScreen>
 
   // ── App Bar ────────────────────────────────────────────────
   SliverAppBar _buildAppBar() {
+    final authState = ClerkAuth.of(context);
+    final user = authState.client.user;
+    final userName = [
+      user?.firstName ?? '',
+      user?.lastName ?? '',
+    ].where((s) => s.isNotEmpty).join(' ');
+
     return SliverAppBar(
-      expandedHeight: 180,
+      expandedHeight: 200,
       pinned: true,
       backgroundColor: AppColors.primary,
       elevation: 0,
       leading: const SizedBox(),
+      actions: [
+        Padding(
+          padding: const EdgeInsets.only(right: 12),
+          child: IconButton(
+            onPressed: () => authState.signOut(),
+            tooltip: 'Sign Out',
+            icon: Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: Colors.white.withOpacity(0.2),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: const Icon(
+                Icons.logout_rounded,
+                color: Colors.white,
+                size: 20,
+              ),
+            ),
+          ),
+        ),
+      ],
       flexibleSpace: FlexibleSpaceBar(
         collapseMode: CollapseMode.parallax,
         background: Container(
@@ -163,6 +192,17 @@ class _ReportIssueScreenState extends State<ReportIssueScreen>
                     crossAxisAlignment: CrossAxisAlignment.start,
                     mainAxisAlignment: MainAxisAlignment.end,
                     children: [
+                      if (userName.isNotEmpty) ...[
+                        Text(
+                          'Hi, $userName 👋',
+                          style: GoogleFonts.poppins(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w600,
+                            color: Colors.white,
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                      ],
                       Row(
                         children: [
                           Container(
@@ -171,10 +211,10 @@ class _ReportIssueScreenState extends State<ReportIssueScreen>
                               color: Colors.white.withOpacity(0.2),
                               borderRadius: BorderRadius.circular(14),
                             ),
-                            child: const Icon(
-                              Icons.report_problem_rounded,
-                              color: Colors.white,
-                              size: 22,
+                            child: Image.asset(
+                              'assets/drt_logo_white.png',
+                              width: 28,
+                              height: 28,
                             ),
                           ),
                           const SizedBox(width: 14),
@@ -207,6 +247,68 @@ class _ReportIssueScreenState extends State<ReportIssueScreen>
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          // Nearest Bus Stop (real-time)
+          const SectionLabel(
+              label: 'Nearest Bus Stop', icon: Icons.location_on_rounded),
+          const SizedBox(height: 12),
+
+          if (_vm.isFetchingLocation)
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(vertical: 20),
+              child: Column(
+                children: [
+                  const SizedBox(
+                    height: 24,
+                    width: 24,
+                    child: CircularProgressIndicator(
+                        strokeWidth: 2.5, color: AppColors.primary),
+                  ),
+                  const SizedBox(height: 10),
+                  Text('Finding nearest stop...',
+                      style: GoogleFonts.poppins(
+                          fontSize: 12, color: Colors.grey.shade500)),
+                ],
+              ),
+            ),
+
+          if (_vm.nearestStop != null && !_vm.isFetchingLocation) ...[
+            NearestStopCard(
+              stop: _vm.nearestStop!,
+              distanceFormatted: _vm.nearestStopDistanceFormatted,
+              isWithinRange: _vm.isWithinRange,
+              userLat: _vm.userLat,
+              userLon: _vm.userLon,
+            ),
+          ],
+
+          if (_vm.locationError != null && !_vm.isFetchingLocation)
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                color: AppColors.error.withAlpha(20),
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: AppColors.error.withAlpha(50)),
+              ),
+              child: Row(
+                children: [
+                  const Icon(Icons.error_outline_rounded,
+                      color: AppColors.error, size: 18),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      _vm.locationError!,
+                      style: GoogleFonts.poppins(
+                          fontSize: 12, color: AppColors.error),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+
+          const SizedBox(height: 28),
+
           // Category
           const SectionLabel(
               label: 'Issue Category', icon: Icons.category_rounded),
@@ -279,64 +381,6 @@ class _ReportIssueScreenState extends State<ReportIssueScreen>
 
           const SizedBox(height: 32),
 
-          // Nearest Stop result (shown after submit)
-          if (_vm.isFetchingLocation)
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.symmetric(vertical: 20),
-              child: Column(
-                children: [
-                  const SizedBox(
-                    height: 24,
-                    width: 24,
-                    child: CircularProgressIndicator(
-                        strokeWidth: 2.5, color: AppColors.primary),
-                  ),
-                  const SizedBox(height: 10),
-                  Text('Finding nearest stop...',
-                      style: GoogleFonts.poppins(
-                          fontSize: 12, color: Colors.grey.shade500)),
-                ],
-              ),
-            ),
-
-          if (_vm.nearestStop != null && !_vm.isFetchingLocation) ...[
-            NearestStopCard(
-              stop: _vm.nearestStop!,
-              distanceFormatted: _vm.nearestStopDistanceFormatted,
-              userLat: _vm.userLat,
-              userLon: _vm.userLon,
-            ),
-            const SizedBox(height: 20),
-          ],
-
-          if (_vm.locationError != null && !_vm.isFetchingLocation)
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(14),
-              decoration: BoxDecoration(
-                color: AppColors.error.withAlpha(20),
-                borderRadius: BorderRadius.circular(14),
-                border: Border.all(color: AppColors.error.withAlpha(50)),
-              ),
-              child: Row(
-                children: [
-                  const Icon(Icons.error_outline_rounded,
-                      color: AppColors.error, size: 18),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: Text(
-                      _vm.locationError!,
-                      style: GoogleFonts.poppins(
-                          fontSize: 12, color: AppColors.error),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-
-          const SizedBox(height: 20),
-
           // Submit
           _buildSubmitButton(),
           const SizedBox(height: 40),
@@ -346,48 +390,85 @@ class _ReportIssueScreenState extends State<ReportIssueScreen>
   }
 
   Widget _buildSubmitButton() {
-    return Container(
-      width: double.infinity,
-      height: 58,
-      decoration: BoxDecoration(
-        gradient: _vm.isSubmitting ? null : AppColors.horizontalGradient,
-        color:
-            _vm.isSubmitting ? AppColors.primary.withOpacity(0.4) : null,
-        borderRadius: BorderRadius.circular(18),
-        boxShadow: _vm.isSubmitting
-            ? []
-            : [
-                BoxShadow(
-                  color: AppColors.primary.withOpacity(0.4),
-                  blurRadius: 20,
-                  offset: const Offset(0, 8),
-                ),
-              ],
-      ),
-      child: TextButton(
-        onPressed: _vm.isSubmitting ? null : _submit,
-        style: TextButton.styleFrom(
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(18),
-          ),
-        ),
-        child: _vm.isSubmitting
-            ? const SizedBox(
-                height: 22,
-                width: 22,
-                child: CircularProgressIndicator(
-                    color: Colors.white, strokeWidth: 2.5),
-              )
-            : Row(
-                mainAxisAlignment: MainAxisAlignment.center,
+    final bool disabled = _vm.isSubmitting || !_vm.isWithinRange;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        if (!_vm.isWithinRange && _vm.nearestStop != null && !_vm.isFetchingLocation)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 12),
+            child: Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: AppColors.error.withAlpha(20),
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: AppColors.error.withAlpha(50)),
+              ),
+              child: Row(
                 children: [
-                  const Icon(Icons.send_rounded,
-                      color: Colors.white, size: 18),
+                  const Icon(Icons.near_me_disabled_rounded,
+                      color: AppColors.error, size: 18),
                   const SizedBox(width: 10),
-                  Text('Submit Issue', style: AppTextStyles.buttonText),
+                  Expanded(
+                    child: Text(
+                      'You must be within 40m of a bus stop to submit a report. You are ${_vm.nearestStopDistanceFormatted} away.',
+                      style: GoogleFonts.poppins(
+                          fontSize: 12, color: AppColors.error),
+                    ),
+                  ),
                 ],
               ),
-      ),
+            ),
+          ),
+        Container(
+          width: double.infinity,
+          height: 58,
+          decoration: BoxDecoration(
+            gradient: disabled ? null : AppColors.horizontalGradient,
+            color: disabled ? Colors.grey.shade300 : null,
+            borderRadius: BorderRadius.circular(18),
+            boxShadow: disabled
+                ? []
+                : [
+                    BoxShadow(
+                      color: AppColors.primary.withOpacity(0.4),
+                      blurRadius: 20,
+                      offset: const Offset(0, 8),
+                    ),
+                  ],
+          ),
+          child: TextButton(
+            onPressed: disabled ? null : _submit,
+            style: TextButton.styleFrom(
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(18),
+              ),
+            ),
+            child: _vm.isSubmitting
+                ? const SizedBox(
+                    height: 22,
+                    width: 22,
+                    child: CircularProgressIndicator(
+                        color: Colors.white, strokeWidth: 2.5),
+                  )
+                : Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(Icons.send_rounded,
+                          color: disabled ? Colors.grey.shade500 : Colors.white, size: 18),
+                      const SizedBox(width: 10),
+                      Text('Submit Issue',
+                          style: disabled
+                              ? GoogleFonts.poppins(
+                                  fontSize: 15,
+                                  fontWeight: FontWeight.w600,
+                                  color: Colors.grey.shade500)
+                              : AppTextStyles.buttonText),
+                    ],
+                  ),
+          ),
+        ),
+      ],
     );
   }
 }

@@ -39,6 +39,7 @@ dependencies:
   geolocator: ^13.0.2
   clerk_flutter: ^0.0.14-beta
   flutter_dotenv: ^6.0.0
+  flutter_svg: ^2.2.4
 
 dev_dependencies:
   flutter_test:
@@ -64,6 +65,8 @@ flutter:
 
   assets:
     - assets/data.txt
+    - assets/drt_logo.svg
+    - assets/drt_logo_white.png
     - .env
 
   # An image asset can refer to one or more resolution-specific "variants", see

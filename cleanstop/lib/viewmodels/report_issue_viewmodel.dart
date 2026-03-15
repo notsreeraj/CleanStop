@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
@@ -12,8 +13,10 @@ class ReportIssueViewModel extends ChangeNotifier {
   final StopService _stopService = StopService();
   final TextEditingController descController = TextEditingController();
 
+  static const double maxDistanceMeters = 40.0;
+
   File? _selectedImage;
-  String _selectedCategory = 'Cleanliness';
+  String _selectedCategory = 'Snow / Ice';
   bool _isSubmitting = false;
 
   // Location & nearest stop state
@@ -24,6 +27,8 @@ class ReportIssueViewModel extends ChangeNotifier {
   double? _userLat;
   double? _userLon;
 
+  StreamSubscription? _positionSub;
+
   File? get selectedImage => _selectedImage;
   String get selectedCategory => _selectedCategory;
   bool get isSubmitting => _isSubmitting;
@@ -33,6 +38,10 @@ class ReportIssueViewModel extends ChangeNotifier {
   double? get nearestStopDistanceMeters => _nearestStopDistance;
   double? get userLat => _userLat;
   double? get userLon => _userLon;
+
+  /// Whether the user is within 40m of the nearest stop.
+  bool get isWithinRange =>
+      _nearestStop != null && _nearestStopDistance != null && _nearestStopDistance! <= maxDistanceMeters;
 
   String get nearestStopDistanceFormatted {
     if (_nearestStopDistance == null) return '';
@@ -61,31 +70,60 @@ class ReportIssueViewModel extends ChangeNotifier {
   }
 
   bool get canSubmit =>
-      _selectedImage != null || descController.text.trim().isNotEmpty;
+      (_selectedImage != null || descController.text.trim().isNotEmpty) && isWithinRange;
 
-  /// Fetch device location, find nearest stop, and update state.
-  Future<void> fetchNearestStop() async {
+  /// Start real-time location tracking. Call once when screen opens.
+  Future<void> startLocationTracking() async {
     _isFetchingLocation = true;
     _locationError = null;
     notifyListeners();
 
     try {
+      // Initial position fetch (also triggers permission request)
       final position = await _locationService.getCurrentPosition();
-      _userLat = position.latitude;
-      _userLon = position.longitude;
+      await _updateNearestStop(position.latitude, position.longitude);
 
-      final result =
-          await _stopService.findNearestStop(_userLat!, _userLon!);
+      _isFetchingLocation = false;
+      notifyListeners();
+
+      // Subscribe to continuous position updates
+      _positionSub = _locationService.getPositionStream().listen(
+        (position) async {
+          await _updateNearestStop(position.latitude, position.longitude);
+        },
+        onError: (e) {
+          _locationError = e.toString();
+          notifyListeners();
+        },
+      );
+    } catch (e) {
+      _locationError = e.toString();
+      _nearestStop = null;
+      _nearestStopDistance = null;
+      _isFetchingLocation = false;
+      notifyListeners();
+    }
+  }
+
+  /// Update nearest stop from given coordinates.
+  Future<void> _updateNearestStop(double lat, double lon) async {
+    _userLat = lat;
+    _userLon = lon;
+    try {
+      final result = await _stopService.findNearestStop(lat, lon);
       _nearestStop = result.stop;
       _nearestStopDistance = result.distanceMeters;
     } catch (e) {
       _locationError = e.toString();
       _nearestStop = null;
       _nearestStopDistance = null;
-    } finally {
-      _isFetchingLocation = false;
-      notifyListeners();
     }
+    notifyListeners();
+  }
+
+  void stopLocationTracking() {
+    _positionSub?.cancel();
+    _positionSub = null;
   }
 
   Future<bool> submit() async {
@@ -93,16 +131,6 @@ class ReportIssueViewModel extends ChangeNotifier {
 
     _isSubmitting = true;
     notifyListeners();
-
-    // Automatically fetch location + nearest stop on submit
-    if (_nearestStop == null) {
-      await fetchNearestStop();
-      if (_locationError != null) {
-        _isSubmitting = false;
-        notifyListeners();
-        return false;
-      }
-    }
 
     // Simulate API call — replace with real service later
     await Future.delayed(const Duration(seconds: 2));
@@ -116,7 +144,7 @@ class ReportIssueViewModel extends ChangeNotifier {
   void resetForm() {
     _selectedImage = null;
     descController.clear();
-    _selectedCategory = 'Cleanliness';
+    _selectedCategory = 'Snow / Ice';
     _nearestStop = null;
     _nearestStopDistance = null;
     _userLat = null;
@@ -127,6 +155,7 @@ class ReportIssueViewModel extends ChangeNotifier {
 
   @override
   void dispose() {
+    stopLocationTracking();
     descController.dispose();
     super.dispose();
   }

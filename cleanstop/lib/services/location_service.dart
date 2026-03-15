@@ -28,4 +28,17 @@ class LocationService {
       ),
     );
   }
+
+  /// Returns a stream of position updates for real-time tracking.
+  /// Requires permissions to already be granted (call [getCurrentPosition] first).
+  Stream<Position> getPositionStream({
+    int distanceFilter = 5,
+  }) {
+    return Geolocator.getPositionStream(
+      locationSettings: LocationSettings(
+        accuracy: LocationAccuracy.high,
+        distanceFilter: distanceFilter,
+      ),
+    );
+  }
 }
