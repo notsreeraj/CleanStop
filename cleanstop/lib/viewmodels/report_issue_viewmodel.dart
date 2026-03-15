@@ -145,9 +145,7 @@ class ReportIssueViewModel extends ChangeNotifier {
   }
 
   /// Full submission flow:
-  /// 1. Upload image to Cloudinary
-  /// 2. Validate image with Gemini via backend
-  /// 3. If valid, submit report to backend
+  /// 1. Submit report to backend with image file (backend handles Cloudinary upload)
   Future<bool> submit() async {
     if (!canSubmit) return false;
 
@@ -157,50 +155,17 @@ class ReportIssueViewModel extends ChangeNotifier {
     notifyListeners();
 
     try {
-      String? photoUrl;
-
-      // Step 1: Upload image to Cloudinary if present
-      if (_selectedImage != null) {
-        _submissionStatus = 'Uploading image...';
-        notifyListeners();
-
-        photoUrl = await ApiService.uploadImageToCloudinary(_selectedImage!);
-
-        // Step 2: Validate image with Gemini AI
-        _submissionStatus = 'AI analyzing image...';
-        notifyListeners();
-
-        final validation = await ApiService.validateImage(
-          imageUrl: photoUrl,
-          category: _selectedCategory,
-          description: descController.text.trim().isNotEmpty
-              ? descController.text.trim()
-              : null,
-        );
-
-        final isValid = validation['is_valid'] as bool? ?? false;
-        if (!isValid) {
-          final reason = validation['reason'] as String? ?? 'Image not valid for this category.';
-          _submissionError = reason;
-          _isSubmitting = false;
-          _submissionStatus = null;
-          notifyListeners();
-          return false;
-        }
-      }
-
-      // Step 3: Submit report to backend
       _submissionStatus = 'Submitting report...';
       notifyListeners();
 
-      await ApiService.submitReport(
+      await ApiService.submitReportMultipart(
         stopId: _nearestStop!.stopId,
         issueType: _selectedCategory,
         description: descController.text.trim().isNotEmpty
             ? descController.text.trim()
             : null,
         userId: _userId,
-        photoUrl: photoUrl,
+        imageFile: _selectedImage,
       );
 
       _isSubmitting = false;

@@ -17,34 +17,33 @@ class ApiService {
   static String get _cloudinaryApiSecret =>
       dotenv.env['CLOUDINARY_API_SECRET'] ?? '';
 
-  // ── Cloudinary Upload ──────────────────────────────────────
 
-  /// Upload image to Cloudinary and return the secure URL.
-  static Future<String> uploadImageToCloudinary(File imageFile) async {
-    final timestamp = DateTime.now().millisecondsSinceEpoch ~/ 1000;
-    final paramsToSign = 'folder=cleanstop_reports&timestamp=$timestamp${_cloudinaryApiSecret}';
-    final signature = sha1.convert(utf8.encode(paramsToSign)).toString();
-
-    final uri = Uri.parse(
-      'https://api.cloudinary.com/v1_1/$_cloudinaryCloudName/image/upload',
-    );
-
+  // ── Submit Report (Multipart) ─────────────────────────────
+  /// Submit a report to the backend via multipart/form-data, including image file.
+  static Future<Map<String, dynamic>> submitReportMultipart({
+    required int stopId,
+    required String issueType,
+    String? description,
+    String? userId,
+    File? imageFile,
+  }) async {
+    final uri = Uri.parse('$_baseUrl/reports');
     final request = http.MultipartRequest('POST', uri)
-      ..fields['folder'] = 'cleanstop_reports'
-      ..fields['timestamp'] = timestamp.toString()
-      ..fields['api_key'] = _cloudinaryApiKey
-      ..fields['signature'] = signature
-      ..files.add(await http.MultipartFile.fromPath('file', imageFile.path));
-
-    final response = await request.send();
-    final body = await response.stream.bytesToString();
-
-    if (response.statusCode != 200) {
-      throw Exception('Cloudinary upload failed: $body');
+      ..fields['stop_id'] = stopId.toString()
+      ..fields['issue_type'] = issueType;
+    if (description != null) request.fields['description'] = description;
+    if (userId != null) request.fields['user_id'] = userId;
+    if (imageFile != null) {
+      request.files.add(await http.MultipartFile.fromPath('photo', imageFile.path));
     }
 
-    final data = json.decode(body);
-    return data['secure_url'] as String;
+    final streamedResponse = await request.send();
+    final body = await streamedResponse.stream.bytesToString();
+    if (streamedResponse.statusCode != 200) {
+      final error = json.decode(body);
+      throw Exception(error['detail'] ?? 'Failed to submit report');
+    }
+    return json.decode(body) as Map<String, dynamic>;
   }
 
   // ── Gemini Image Validation ────────────────────────────────
