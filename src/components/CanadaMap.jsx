@@ -12,7 +12,7 @@ const issueColors = {
 }
 const defaultColor = '#94a3b8'
 
-export default function CanadaMap({ reports, loading, error, selectedReport, onReportSelect }) {
+export default function CanadaMap({ reports, stops, showAllStops, loading, error, selectedReport, onReportSelect }) {
   const mapRef = useRef(null)
 
   // Fit bounds when reports load
@@ -99,6 +99,26 @@ export default function CanadaMap({ reports, loading, error, selectedReport, onR
                 cursor: 'pointer',
               }}
               title={`${r.issue_type} — ${r.stop_name}`}
+            />
+          </Marker>
+        ))}
+
+        {showAllStops && stops.filter(s => s.report_count === 0).map(s => (
+          <Marker
+            key={`stop-${s.stop_id}`}
+            latitude={s.lat}
+            longitude={s.lon}
+            anchor="center"
+          >
+            <div
+              style={{
+                width: 7,
+                height: 7,
+                borderRadius: '50%',
+                background: '#475569',
+                border: '1px solid rgba(255,255,255,0.3)',
+              }}
+              title={`${s.stop_name} (#${s.stop_id})`}
             />
           </Marker>
         ))}

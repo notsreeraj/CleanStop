@@ -8,7 +8,7 @@ const navItems = [
   { icon: '🗺️', label: 'Map View', view: 'dashboard', badge: 'Live', badgeClass: 'green' },
   { section: 'Intelligence' },
   { icon: '🔮', label: 'Predictive Insights', view: 'insights' },
-  { icon: '📈', label: 'Analytics', view: 'dashboard' },
+  { icon: '📈', label: 'Analytics', view: 'analytics' },
   { section: 'System' },
   { icon: '⚙️', label: 'Settings', view: 'dashboard' },
   { icon: '👥', label: 'Team', view: 'dashboard' },
@@ -18,10 +18,10 @@ export default function Sidebar({ activeView, onViewChange }) {
   return (
     <aside className="sidebar">
       <div className="sidebar-brand">
-        <div className="brand-icon">🚌</div>
+        <img src="/drt_logo.svg" alt="DRT" className="brand-logo" />
         <div>
-          <h1>DRT Ops</h1>
-          <span>Maintenance Hub</span>
+          <h1>CleanStop</h1>
+          <span>DRT Maintenance Hub</span>
         </div>
       </div>
 
@@ -31,7 +31,7 @@ export default function Sidebar({ activeView, onViewChange }) {
         ) : (
           <button
             key={i}
-            className={`sidebar-link${activeView === item.view && item.label !== 'Map View' && item.label !== 'Analytics' && item.label !== 'Settings' && item.label !== 'Team' ? ' active' : ''}`}
+            className={`sidebar-link${activeView === item.view && item.label !== 'Map View' && item.label !== 'Settings' && item.label !== 'Team' ? ' active' : ''}`}
             onClick={() => onViewChange(item.view)}
           >
             <span className="link-icon">{item.icon}</span>

@@ -4,6 +4,7 @@ const viewTitles = {
   dashboard: 'Dashboard',
   flagged: 'Flagged Stops',
   reports: 'Hazard Reports',
+  analytics: 'Analytics',
   insights: 'Predictive Insights',
 }
 
@@ -11,6 +12,7 @@ const viewBreadcrumbs = {
   dashboard: 'DRT Ops / Overview',
   flagged: 'DRT Ops / Flagged Stops',
   reports: 'DRT Ops / Reports',
+  analytics: 'DRT Ops / Analytics',
   insights: 'DRT Ops / Intelligence',
 }
 

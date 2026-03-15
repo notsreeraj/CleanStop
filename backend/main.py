@@ -132,17 +132,23 @@ def get_all_stops(db: Session = Depends(get_db)):
 
 
 @app.get("/reports", response_model=list[ReportWithLocation])
-def get_all_reports(db: Session = Depends(get_db)):
+def get_all_reports(since: Optional[str] = Query(None), db: Session = Depends(get_db)):
     """
     Return every report with its stop's name and coordinates.
     Used by the admin dashboard map view.
+    Optional `since` ISO timestamp to limit results.
     """
-    rows = (
+    q = (
         db.query(Report, Stop.stop_name, Stop.lat, Stop.lon)
         .join(Stop, Stop.stop_id == Report.stop_id)
-        .order_by(Report.created_at.desc())
-        .all()
     )
+    if since:
+        try:
+            cutoff = datetime.fromisoformat(since.replace("Z", "+00:00"))
+            q = q.filter(Report.created_at >= cutoff)
+        except ValueError:
+            pass
+    rows = q.order_by(Report.created_at.desc()).all()
     return [
         ReportWithLocation(
             id=r.Report.id,
@@ -343,3 +349,18 @@ async def create_report(
         stop_id=report.stop_id,
         created_at=report.created_at,
     )
+
+
+# ── Weather Prediction ─────────────────────────────────────────────────────
+
+from weather_service import get_weather_predictions
+
+
+@app.get("/weather/predictions")
+async def weather_predictions(db: Session = Depends(get_db)):
+    """
+    Return snowfall risk predictions for all bus stops.
+    Groups nearby stops, fetches Open-Meteo forecasts, classifies risk.
+    Cached for 15 minutes.
+    """
+    return await get_weather_predictions(db)
