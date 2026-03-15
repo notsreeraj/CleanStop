@@ -1,41 +1,13 @@
-import { useEffect, useMemo, useCallback, useRef, useState } from 'react'
-import Map, { Source, Layer, Popup, NavigationControl } from 'react-map-gl/maplibre'
+import { useEffect, useCallback, useRef, useState } from 'react'
+import Map, { Popup, NavigationControl } from 'react-map-gl/maplibre'
 import 'maplibre-gl/dist/maplibre-gl.css'
 
 const MAP_STYLE = 'https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json'
+const SOURCE_ID = 'stops-source'
+const LAYER_ID = 'stops-circles'
 
-// Circle layer for stops with NO reports (green)
-const stopsLayerNoReports = {
-  id: 'stops-no-reports',
-  type: 'circle',
-  filter: ['==', ['get', 'report_count'], 0],
-  paint: {
-    'circle-radius': 5,
-    'circle-color': '#10b981',
-    'circle-stroke-color': 'rgba(255,255,255,0.6)',
-    'circle-stroke-width': 1.5,
-  },
-}
-
-// Circle layer for stops WITH reports (amber)
-const stopsLayerWithReports = {
-  id: 'stops-with-reports',
-  type: 'circle',
-  filter: ['>', ['get', 'report_count'], 0],
-  paint: {
-    'circle-radius': 7,
-    'circle-color': '#f59e0b',
-    'circle-stroke-color': 'rgba(255,255,255,0.7)',
-    'circle-stroke-width': 2,
-  },
-}
-
-export default function CanadaMap({ stops, loading, error, selectedStop, onStopSelect }) {
-  const mapRef = useRef(null)
-  const [cursor, setCursor] = useState('grab')
-
-  // Convert stops array to GeoJSON (memoised — only recomputes when stops change)
-  const geojson = useMemo(() => ({
+function buildGeoJSON(stops) {
+  return {
     type: 'FeatureCollection',
     features: stops.map(s => ({
       type: 'Feature',
@@ -43,37 +15,93 @@ export default function CanadaMap({ stops, loading, error, selectedStop, onStopS
       properties: {
         stop_id: s.stop_id,
         stop_name: s.stop_name,
-        report_count: s.report_count,
+        report_count: s.report_count ?? 0,
       },
     })),
-  }), [stops])
+  }
+}
 
-  // Auto-fit bounds when stops first load
-  const onMapLoad = useCallback(() => {
-    if (stops.length > 0) fitToStops()
-  }, [stops])
+export default function CanadaMap({ stops, loading, error, selectedStop, onStopSelect }) {
+  const mapRef = useRef(null)
+  const mapReady = useRef(false)
+
+  // --- Imperatively manage source + layer via native MapLibre API ---
+  function addStopsLayer(map) {
+    if (map.getSource(SOURCE_ID)) return // already added
+    map.addSource(SOURCE_ID, {
+      type: 'geojson',
+      data: buildGeoJSON(stops),
+    })
+    map.addLayer({
+      id: LAYER_ID,
+      source: SOURCE_ID,
+      type: 'circle',
+      paint: {
+        'circle-radius': 7,
+        'circle-color': [
+          'step',
+          ['to-number', ['get', 'report_count'], 0],
+          '#10b981',
+          1, '#f59e0b',
+          6, '#ef4444',
+        ],
+        'circle-stroke-color': '#ffffff',
+        'circle-stroke-width': 2,
+        'circle-opacity': 1,
+      },
+    })
+
+    // Pointer cursor on hover
+    map.on('mouseenter', LAYER_ID, () => map.getCanvas().style.cursor = 'pointer')
+    map.on('mouseleave', LAYER_ID, () => map.getCanvas().style.cursor = '')
+
+    // Click → select stop
+    map.on('click', LAYER_ID, (e) => {
+      if (!e.features || e.features.length === 0) return
+      const f = e.features[0]
+      const sid = f.properties.stop_id
+      const stop = stops.find(s => String(s.stop_id) === String(sid))
+      if (stop) onStopSelect(stop)
+    })
+  }
+
+  // When the map style loads, add the layer
+  const onMapLoad = useCallback((evt) => {
+    const map = evt.target
+    mapRef.current = map
+    mapReady.current = true
+    addStopsLayer(map)
+    fitToStops(map, stops)
+  }, []) // intentionally stable — stops captured via ref below
+
+  // When stops change, update the source data (or create it if map loaded before data)
+  const stopsRef = useRef(stops)
+  stopsRef.current = stops
 
   useEffect(() => {
-    if (mapRef.current && stops.length > 0) fitToStops()
+    const map = mapRef.current
+    if (!map || !mapReady.current) return
+    const src = map.getSource(SOURCE_ID)
+    if (src) {
+      src.setData(buildGeoJSON(stops))
+    } else {
+      addStopsLayer(map)
+    }
+    if (stops.length > 0) fitToStops(map, stops)
   }, [stops])
 
   // Fly to a stop when selected from the list
   useEffect(() => {
-    if (!mapRef.current || !selectedStop) return
-    mapRef.current.flyTo({
-      center: [selectedStop.lon, selectedStop.lat],
-      zoom: 15,
-      duration: 800,
-    })
+    const map = mapRef.current
+    if (!map || !selectedStop) return
+    map.flyTo({ center: [selectedStop.lon, selectedStop.lat], zoom: 15, duration: 800 })
   }, [selectedStop])
 
-  function fitToStops() {
-    const map = mapRef.current
-    if (!map || stops.length === 0) return
-
+  function fitToStops(map, stopsList) {
+    if (!map || !stopsList || stopsList.length === 0) return
     let minLat = Infinity, maxLat = -Infinity
     let minLon = Infinity, maxLon = -Infinity
-    for (const s of stops) {
+    for (const s of stopsList) {
       if (s.lat < minLat) minLat = s.lat
       if (s.lat > maxLat) maxLat = s.lat
       if (s.lon < minLon) minLon = s.lon
@@ -82,20 +110,11 @@ export default function CanadaMap({ stops, loading, error, selectedStop, onStopS
     map.fitBounds([[minLon, minLat], [maxLon, maxLat]], { padding: 50, duration: 800 })
   }
 
-  // Click handler on the map — check if a stop circle was clicked
-  const onClick = useCallback((e) => {
-    const features = e.features
-    if (features && features.length > 0) {
-      const f = features[0]
-      const stop = stops.find(s => s.stop_id === f.properties.stop_id)
-      if (stop) onStopSelect(stop)
-    }
-  }, [stops, onStopSelect])
-
-  const onMouseEnter = useCallback(() => setCursor('pointer'), [])
-  const onMouseLeave = useCallback(() => setCursor('grab'), [])
-
-  const interactiveLayerIds = ['stops-no-reports', 'stops-with-reports']
+  function getReportColor(count) {
+    if (count === 0) return '#10b981'
+    if (count <= 5) return '#f59e0b'
+    return '#ef4444'
+  }
 
   return (
     <div className="map-container">
@@ -108,7 +127,11 @@ export default function CanadaMap({ stops, loading, error, selectedStop, onStopS
           </div>
           <div className="legend-item">
             <span className="legend-dot" style={{ background: '#f59e0b' }}></span>
-            Has reports
+            1–5 reports
+          </div>
+          <div className="legend-item">
+            <span className="legend-dot" style={{ background: '#ef4444' }}></span>
+            &gt;5 reports
           </div>
           {loading && <span style={{ color: 'var(--text-muted)', fontSize: 12 }}>Loading stops…</span>}
           {error && <span style={{ color: 'var(--accent-rose)', fontSize: 12 }}>⚠ {error}</span>}
@@ -119,13 +142,7 @@ export default function CanadaMap({ stops, loading, error, selectedStop, onStopS
       </div>
 
       <Map
-        ref={mapRef}
         onLoad={onMapLoad}
-        onClick={onClick}
-        onMouseEnter={onMouseEnter}
-        onMouseLeave={onMouseLeave}
-        interactiveLayerIds={interactiveLayerIds}
-        cursor={cursor}
         initialViewState={{
           latitude: 43.9,
           longitude: -78.9,
@@ -135,11 +152,6 @@ export default function CanadaMap({ stops, loading, error, selectedStop, onStopS
         mapStyle={MAP_STYLE}
       >
         <NavigationControl position="top-left" />
-
-        <Source id="stops" type="geojson" data={geojson}>
-          <Layer {...stopsLayerNoReports} />
-          <Layer {...stopsLayerWithReports} />
-        </Source>
 
         {selectedStop && (
           <Popup
@@ -156,7 +168,7 @@ export default function CanadaMap({ stops, loading, error, selectedStop, onStopS
                 <span style={{ color: '#94a3b8', fontSize: 12 }}>Stop #{selectedStop.stop_id}</span>
                 <span style={{ fontSize: 13, color: '#e2e8f0' }}>
                   Reports:{' '}
-                  <strong style={{ color: selectedStop.report_count > 0 ? '#f59e0b' : '#34d399' }}>
+                  <strong style={{ color: getReportColor(selectedStop.report_count) }}>
                     {selectedStop.report_count}
                   </strong>
                 </span>

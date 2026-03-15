@@ -2,12 +2,14 @@ import React from 'react'
 
 const viewTitles = {
   dashboard: 'Dashboard',
+  flagged: 'Flagged Stops',
   reports: 'Hazard Reports',
   insights: 'Predictive Insights',
 }
 
 const viewBreadcrumbs = {
   dashboard: 'DRT Ops / Overview',
+  flagged: 'DRT Ops / Flagged Stops',
   reports: 'DRT Ops / Reports',
   insights: 'DRT Ops / Intelligence',
 }

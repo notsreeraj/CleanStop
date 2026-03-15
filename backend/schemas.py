@@ -44,8 +44,6 @@ class ReportOut(BaseModel):
     issue_type: str
     description: Optional[str] = None
     photo_url: Optional[str] = None
-    device_lat: float
-    device_lon: float
     created_at: datetime
 
     class Config:

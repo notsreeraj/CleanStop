@@ -131,6 +131,37 @@ def get_all_stops(db: Session = Depends(get_db)):
     ]
 
 
+@app.get("/stops/flagged", response_model=list[StopWithCount])
+def get_flagged_stops(db: Session = Depends(get_db)):
+    """
+    Return only stops that have at least one report, sorted by report count desc.
+    Used by the admin dashboard "Flagged Stops" view.
+    """
+    rows = (
+        db.query(
+            Stop.stop_id,
+            Stop.stop_name,
+            Stop.lat,
+            Stop.lon,
+            func.count(Report.id).label("report_count"),
+        )
+        .join(Report, Report.stop_id == Stop.stop_id)
+        .group_by(Stop.stop_id)
+        .order_by(func.count(Report.id).desc())
+        .all()
+    )
+    return [
+        StopWithCount(
+            stop_id=r.stop_id,
+            stop_name=r.stop_name,
+            lat=r.lat,
+            lon=r.lon,
+            report_count=r.report_count,
+        )
+        for r in rows
+    ]
+
+
 @app.get("/stops/nearby", response_model=list[NearbyStop])
 def get_nearby_stops(
     lat: float = Query(..., description="Latitude of the user"),
@@ -209,8 +240,6 @@ async def create_report(
     stop_id: int = Form(...),
     issue_type: str = Form(...),
     description: Optional[str] = Form(None),
-    device_lat: float = Form(...),
-    device_lon: float = Form(...),
     user_id: Optional[str] = Form(None),
     photo: Optional[UploadFile] = File(None),
     db: Session = Depends(get_db),
@@ -225,7 +254,7 @@ async def create_report(
         raise HTTPException(status_code=404, detail="Stop not found")
 
     # Validate issue type
-    valid_types = {"graffiti", "damage", "debris", "lighting", "other"}
+    valid_types = {"Snow / Ice", "Debris", "Structural Damage", "Obstruction"}
     if issue_type not in valid_types:
         raise HTTPException(
             status_code=400,
@@ -253,8 +282,6 @@ async def create_report(
         issue_type=issue_type,
         description=description,
         photo_url=photo_url,
-        device_lat=device_lat,
-        device_lon=device_lon,
         created_at=datetime.now(timezone.utc),
     )
     db.add(report)

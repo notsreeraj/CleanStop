@@ -38,8 +38,6 @@ class Report(Base):
     issue_type = Column(Text, nullable=False)  # graffiti, damage, debris, lighting, other
     description = Column(Text, nullable=True)
     photo_url = Column(Text, nullable=True)
-    device_lat = Column(Float, nullable=False)
-    device_lon = Column(Float, nullable=False)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
     stop = relationship("Stop", back_populates="reports")
